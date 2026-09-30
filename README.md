@@ -1,0 +1,63 @@
+# ISMP Registration
+
+Check-in and discussion-table assignment for ISMP events, driven by a Google Sheets sign-up tab.
+Extracted from ISMP Operations (the check-in and discussion-group logic is a port of
+`core/discussion_groups.py` there).
+
+- Sign in with a Google account on the allowed domain (`acts2.network` by default).
+- Create or join a chapter. Everyone in a chapter shares its imported sheets and mentor roster.
+- **Add sign up sheet** opens Google's file picker. Pick the spreadsheet, then the tab, check the
+  column mapping, and import. The same tab can be imported more than once.
+- Each sheet page has the check-in list and the table board side by side, a manual capacity,
+  and **Re-sync** to pull new sign-ups from the sheet (check-ins are kept).
+
+## Privacy
+
+- The browser reads the sheet and keeps only name, nickname, gender, enrollment level and
+  contact status. Phone numbers, emails, chat IDs and all other columns are never sent to the
+  server. See `frontend/src/sheetParser.ts`.
+- Google access tokens stay in the browser tab's memory; the server never sees them.
+- The app uses the `drive.file` scope, so it can open only spreadsheets someone picks in the
+  picker.
+- For volunteers, only the Google account id and display name are stored, not the email.
+- Imports are deleted `SIGNUP_RETENTION_DAYS` (default 30) after their last import or re-sync.
+  This runs whenever the sheet list loads, and `python manage.py purge_expired_sheets` does the
+  same for a cron job.
+
+## Google Cloud setup (one time)
+
+Use a personal Google Cloud project. No org project is needed.
+
+1. Create a project at https://console.cloud.google.com and note its **project number**
+   (Dashboard → Project info). That's `GOOGLE_APP_ID`.
+2. **APIs & Services → Library**: enable **Google Sheets API** and **Google Picker API**.
+3. **OAuth consent screen**: User type *External*. Add the scopes `openid`, `email`, `profile`
+   and `.../auth/drive.file`. All are non-sensitive, so no Google verification review is needed.
+   While in *Testing*, add yourself as a test user; publish the app when you're ready for others.
+4. **Credentials → Create credentials → OAuth client ID** → *Web application*.
+   Authorized JavaScript origins: `http://localhost:5173` (plus your production URL later).
+   Copy the client ID → `GOOGLE_CLIENT_ID`.
+5. **Credentials → Create credentials → API key**. Restrict it to the *Google Picker API* and to
+   HTTP referrers `http://localhost:5173/*` (plus production later) → `GOOGLE_API_KEY`.
+
+## Local development
+
+Needs Python 3.13, Postgres, and Node 24.
+
+```sh
+# Backend
+python3.13 -m venv venv
+venv/bin/pip install -r backend/requirements.txt
+createdb ismp-registration
+cp backend/.env.example backend/.env   # then fill in the Google values
+cd backend
+../venv/bin/python manage.py migrate
+../venv/bin/python manage.py runserver 8000
+
+# Frontend (another terminal)
+cd frontend
+npm install
+npm run dev        # http://localhost:5173, proxies /api to :8000
+```
+
+Tests: `../venv/bin/python manage.py test registration` in `backend/`, `npm test` in `frontend/`.
