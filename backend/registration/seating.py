@@ -1,13 +1,14 @@
 """Discussion tables and seating at check-in, ported from ISMP Operations.
 
 The organizers' rules: SEPARATE undergrads from grads and guys from girls, seat mentors at tables
-of their own gender, and aim for 3 students per mentor (4 is fine; 5 or more only when there's no
-other choice). A table seats 8 at most: up to 2 mentors and 6 students. Nobody starts a table alone,
-so once their group's tables are full, check-in squeezes students in past 6 rather than open one.
+of their own gender, and keep a group's tables as even as possible as students arrive. A table
+seats 8 at most: up to 2 mentors and 6 students. Nobody starts a table alone, so once their
+group's tables are full, check-in squeezes students in past 6 rather than open one.
 
 Nobody knows for sure who will come, so students aren't seated ahead of time. Tables are planned
 from expected turnout (each sign-up weighted by how often people with that contact status show
-up) and each gets a group and mentors. Check-in then seats each student at a table of their group.
+up) and each gets a group and mentors. Check-in then seats each student at the emptiest table of
+their group.
 """
 import math
 import random
@@ -22,8 +23,6 @@ from .models import FEMALE, GRAD, MALE, OTHER, UNDERGRAD
 GENDER_ORDER, LEVEL_ORDER = [FEMALE, MALE, ''], [UNDERGRAD, GRAD, '']
 STUDENT_LEVELS = (UNDERGRAD, GRAD)
 
-IDEAL_PER_MENTOR = 3
-MAX_PER_MENTOR = 4
 # Bigger groups let students meet each other: tables seat 8, two mentors and 6 students. The board
 # holds to both; only check-in goes past 6 students, when every table of the group is full.
 MENTORS_PER_TABLE = 2
@@ -119,10 +118,6 @@ def _count(table, kind):
     return sum(1 for m in table['members'] if m['kind'] == kind)
 
 
-def _load(table):
-    return _count(table, 'student') / max(_count(table, 'mentor'), 1)
-
-
 def _has_room(table, kind):
     return _count(table, kind) < (MAX_STUDENTS_PER_TABLE if kind == 'student' else MENTORS_PER_TABLE)
 
@@ -130,11 +125,11 @@ def _has_room(table, kind):
 def pick_table(tables, student):
     """Index of the table to seat a student at on check-in, or None if there's no table for their gender.
 
-    Fills one table before starting the next: the fullest table of their group with room for 3
-    per mentor, then the same up to 4, and only then the least-full one. Levels stay apart: the
-    other level's tables are used only when their own level has none. Tables with a mentor come
-    first. Never the other gender's table. If all their group's tables are full (6 students), they
-    take an extra seat at the least-full one: a new table would leave them sitting alone."""
+    Keeps their group's tables as even as possible: the one with the fewest students, and of
+    those the one with the most mentors. Levels stay apart: the other level's tables are used
+    only when their own level has none. Tables with a mentor come first. Never the other gender's
+    table. If all their group's tables are full (6 students), they take an extra seat at the
+    least-full one: a new table would leave them sitting alone."""
     same_gender = [i for i, t in enumerate(tables) if student['gender'] and t.get('gender') == student['gender']]
     # Unknown or Other level: any table of their gender will do.
     own_level = [
@@ -145,18 +140,11 @@ def pick_table(tables, student):
     if not candidates:
         return None
     with_room = [i for i in candidates if _has_room(tables[i], 'student')]
-    if not with_room:
-        return min(candidates, key=lambda i: (not _count(tables[i], 'mentor'), _count(tables[i], 'student'), i))
-    candidates = [i for i in with_room if _count(tables[i], 'mentor')] or with_room
-
-    def fits(i, per_mentor):
-        return (_count(tables[i], 'student') + 1) / max(_count(tables[i], 'mentor'), 1) <= per_mentor
-
-    for per_mentor in (IDEAL_PER_MENTOR, MAX_PER_MENTOR):
-        room = [i for i in candidates if fits(i, per_mentor)]
-        if room:
-            return min(room, key=lambda i: (-_load(tables[i]), i))
-    return min(candidates, key=lambda i: (_load(tables[i]), i))
+    if with_room:
+        candidates = [i for i in with_room if _count(tables[i], 'mentor')] or with_room
+    return min(candidates, key=lambda i: (
+        not _count(tables[i], 'mentor'), _count(tables[i], 'student'), -_count(tables[i], 'mentor'), i,
+    ))
 
 
 def group_of(students):

@@ -557,16 +557,19 @@ class NotAStudentTests(SeatingBase):
 
 
 class CheckInSeatingTests(SeatingBase):
-    def test_check_in_fills_one_table_to_six_then_squeezes_in_rather_than_add_a_table(self):
+    def test_check_in_keeps_tables_even_then_squeezes_in_rather_than_add_a_table(self):
         students = self.add_students(13, 'female', 'undergrad', status='not_contacted')
         self.add_students(12, 'female', 'undergrad')  # 10.2 expected: two tables
         for name in ('Mia', 'Ava', 'Zoe', 'Ivy'):
             self.add_mentor(name, 'female')
         self.generate()
         sizes = lambda: [len(t) for t in self.seated_students(self.plan())]
-        for s in students[:7]:
+        for s in students[:3]:
             self.check_in(s)
-        self.assertEqual(sizes(), [6, 1])  # with Table 2's mentors
+        self.assertEqual(sizes(), [2, 1])
+        for s in students[3:7]:
+            self.check_in(s)
+        self.assertEqual(sizes(), [4, 3])
         for s in students[7:12]:
             self.check_in(s)
         self.assertEqual(sizes(), [6, 6])
