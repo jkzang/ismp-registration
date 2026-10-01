@@ -1,9 +1,12 @@
 /**
  * Google sign-in, Drive file picking and Sheets reads, all from the browser.
  *
- * Access tokens stay in this tab's memory and are never sent to our server. The app asks only for
- * the drive.file scope, so it can read just the spreadsheets someone picks in the Google Picker.
+ * Access tokens stay in this tab (memory and sessionStorage, so a reload doesn't need Google's popup
+ * again) and are never sent to our server. The app asks only for the drive.file scope, so it can
+ * read (and tick attendance in) just the spreadsheets someone picks in the Google Picker.
  */
+import { parseSheet, type FieldMap } from './sheetParser'
+import { isDatabaseTab } from './studentDatabase'
 import type { AppConfig } from './types'
 
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/drive.file'
@@ -52,15 +55,41 @@ export async function renderSignInButton(el: HTMLElement, config: AppConfig, onC
 }
 
 export function signOutOfGoogle() {
-  token = null
+  setToken(null)
   if (typeof google !== 'undefined') google.accounts.id.disableAutoSelect()
 }
 
-let token: { value: string; expiresAt: number } | null = null
+type Token = { value: string; expiresAt: number }
+const TOKEN_KEY = 'google-sheets-token'
 
-/** Opens Google's consent popup the first time; call it from a click so the popup isn't blocked. */
-export async function getAccessToken(config: AppConfig): Promise<string> {
+let token: Token | null = (() => {
+  try {
+    return JSON.parse(sessionStorage.getItem(TOKEN_KEY) ?? 'null') as Token | null
+  } catch {
+    return null
+  }
+})()
+
+function setToken(next: Token | null) {
+  token = next
+  try {
+    if (next) sessionStorage.setItem(TOKEN_KEY, JSON.stringify(next))
+    else sessionStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // Storage blocked: the token just lives in memory.
+  }
+}
+
+/** Google needs its popup to hand over a token, and that popup has to come from a click. */
+export class NeedsSignInError extends Error {}
+
+/**
+ * Opens Google's consent popup the first time; call it from a click so the popup isn't blocked.
+ * With `interactive: false` it never opens the popup, and throws NeedsSignInError instead.
+ */
+export async function getAccessToken(config: AppConfig, { interactive = true } = {}): Promise<string> {
   if (token && token.expiresAt > Date.now() + 60_000) return token.value
+  if (!interactive) throw new NeedsSignInError('Sign in to Google to write attendance to the sheet.')
   await loadIdentity()
   return new Promise((resolve, reject) => {
     const client = google.accounts.oauth2.initTokenClient({
@@ -72,7 +101,7 @@ export async function getAccessToken(config: AppConfig): Promise<string> {
           reject(new Error(response.error_description || 'Google didn’t grant access to Sheets.'))
           return
         }
-        token = { value: response.access_token, expiresAt: Date.now() + Number(response.expires_in) * 1000 }
+        setToken({ value: response.access_token, expiresAt: Date.now() + Number(response.expires_in) * 1000 })
         resolve(response.access_token)
       },
       error_callback: (error) =>
@@ -116,12 +145,15 @@ export async function pickSpreadsheet(config: AppConfig, accessToken: string, on
 /** The app can't see this spreadsheet yet: the person has to pick it once in the Picker. */
 export class NoAccessError extends Error {}
 
-async function sheetsGet<T>(config: AppConfig, path: string, retried = false): Promise<T> {
+async function sheetsFetch<T>(config: AppConfig, path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const accessToken = await getAccessToken(config)
-  const res = await fetch(`${SHEETS_API}/${path}`, { headers: { Authorization: `Bearer ${accessToken}` } })
+  const res = await fetch(`${SHEETS_API}/${path}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+  })
   if (res.status === 401 && !retried) {
-    token = null
-    return sheetsGet(config, path, true)
+    setToken(null)
+    return sheetsFetch(config, path, init, true)
   }
   if (res.status === 403 || res.status === 404) throw new NoAccessError('This app doesn’t have access to that spreadsheet yet.')
   if (!res.ok) throw new Error(`Google Sheets returned an error (${res.status}).`)
@@ -136,7 +168,7 @@ export async function getSpreadsheet(config: AppConfig, spreadsheetId: string): 
     sheets: { properties: { sheetId: number; title: string; hidden?: boolean; gridProperties?: { rowCount?: number } } }[]
   }
   const fields = 'properties.title,sheets.properties(sheetId,title,hidden,gridProperties.rowCount)'
-  const meta = await sheetsGet<Meta>(config, `${encodeURIComponent(spreadsheetId)}?fields=${encodeURIComponent(fields)}`)
+  const meta = await sheetsFetch<Meta>(config, `${encodeURIComponent(spreadsheetId)}?fields=${encodeURIComponent(fields)}`)
   return {
     title: meta.properties.title,
     tabs: meta.sheets
@@ -147,7 +179,7 @@ export async function getSpreadsheet(config: AppConfig, spreadsheetId: string): 
 
 export async function getTabValues(config: AppConfig, spreadsheetId: string, tabTitle: string): Promise<string[][]> {
   const range = `'${tabTitle.replace(/'/g, "''")}'`
-  const data = await sheetsGet<{ values?: string[][] }>(
+  const data = await sheetsFetch<{ values?: string[][] }>(
     config,
     `${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE&majorDimension=ROWS`,
   )
@@ -159,5 +191,81 @@ export async function readTab(config: AppConfig, spreadsheetId: string, tabId: n
   const { title, tabs } = await getSpreadsheet(config, spreadsheetId)
   const tab = tabs.find((t) => t.id === tabId)
   if (!tab) throw new Error('That tab no longer exists in the spreadsheet.')
-  return { spreadsheetTitle: title, tabTitle: tab.title, values: await getTabValues(config, spreadsheetId, tab.title) }
+  return { spreadsheetTitle: title, tabTitle: tab.title, tabs, values: await getTabValues(config, spreadsheetId, tab.title) }
+}
+
+/** The spreadsheet's "Student Database" tab, if it has one other than `skipTabId`. */
+export async function readDatabaseTab(config: AppConfig, spreadsheetId: string, tabs: Tab[], skipTabId: number) {
+  const tab = tabs.find((t) => t.id !== skipTabId && isDatabaseTab(t.title))
+  return tab ? getTabValues(config, spreadsheetId, tab.title) : null
+}
+
+/** Writes text into cells of one tab (row and column 0-based), as if typed. */
+export async function writeCells(
+  config: AppConfig,
+  spreadsheetId: string,
+  tabTitle: string,
+  cells: { row: number; column: number; text: string }[],
+) {
+  if (cells.length === 0) return
+  const tab = `'${tabTitle.replace(/'/g, "''")}'`
+  const data = cells.map((c) => ({ range: `${tab}!${columnLetter(c.column)}${c.row + 1}`, values: [[c.text]] }))
+  try {
+    await sheetsFetch(config, `${encodeURIComponent(spreadsheetId)}/values:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data }),
+    })
+  } catch (err) {
+    if (err instanceof NoAccessError) throw new Error('You can view this spreadsheet but not edit it. Ask its owner for edit access.')
+    throw err
+  }
+}
+
+function columnLetter(index: number) {
+  let letters = ''
+  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) letters = String.fromCharCode(65 + ((n - 1) % 26)) + letters
+  return letters
+}
+
+export class NoAttendanceColumnError extends Error {}
+
+/**
+ * Ticks the attendance checkbox of everyone in `tick` and clears it for everyone in `untick`
+ * (keys of sign-up rows), skipping boxes already right. Returns how many boxes it changed.
+ */
+export async function writeAttendance(
+  config: AppConfig,
+  sheet: { spreadsheet_id: string; tab_id: number; field_map: FieldMap },
+  tick: Set<string>,
+  untick: Set<string>,
+) {
+  const { tabTitle, values } = await readTab(config, sheet.spreadsheet_id, sheet.tab_id)
+  // An import from before the column existed saved it as "none"; look for it again.
+  const fieldMap = { ...sheet.field_map }
+  if (!fieldMap.attendance) delete fieldMap.attendance
+  const parsed = parseSheet(values, { fieldMap })
+  const column = parsed.columns.attendance
+  if (column === undefined) {
+    throw new NoAttendanceColumnError('No attendance column found. Name a column “Attendance” in the sheet.')
+  }
+  const tab = `'${tabTitle.replace(/'/g, "''")}'`
+  const data = parsed.rows.flatMap((row, i) => {
+    const index = parsed.rowIndexes[i]
+    const ticked = (values[index]?.[column] ?? '').trim().toUpperCase() === 'TRUE'
+    const want = tick.has(row.key) ? true : untick.has(row.key) ? false : ticked
+    return want !== ticked ? [{ range: `${tab}!${columnLetter(column)}${index + 1}`, values: [[want]] }] : []
+  })
+  if (data.length > 0) {
+    try {
+      await sheetsFetch(config, `${encodeURIComponent(sheet.spreadsheet_id)}/values:batchUpdate`, {
+        method: 'POST',
+        body: JSON.stringify({ valueInputOption: 'RAW', data }),
+      })
+    } catch (err) {
+      // It could be read, so this is Google's own sharing: view-only.
+      if (err instanceof NoAccessError) throw new Error('You can view this spreadsheet but not edit it. Ask its owner for edit access.')
+      throw err
+    }
+  }
+  return data.length
 }

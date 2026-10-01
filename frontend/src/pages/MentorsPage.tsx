@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { api, errorMessage } from '../api'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Segmented } from '../components/Segmented'
 import { TrashIcon } from '../components/icons'
 import type { Gender, Mentor } from '../types'
+import { useUndo } from '../undo'
 
 const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: 'female', label: 'Female' },
@@ -14,6 +16,26 @@ export function MentorsPage() {
   const [name, setName] = useState('')
   const [gender, setGender] = useState<Gender | ''>('')
   const [error, setError] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<Mentor | null>(null)
+  const { push } = useUndo()
+
+  const sorted = (list: Mentor[]) => list.sort((a, b) => a.name.localeCompare(b.name))
+
+  async function create(name: string, gender: Gender) {
+    const mentor = await api.createMentor(name, gender)
+    setMentors((current) => sorted([...(current ?? []), mentor]))
+    return mentor
+  }
+
+  async function destroy(mentor: Mentor) {
+    await api.deleteMentor(mentor.id)
+    setMentors((current) => current!.filter((m) => m.id !== mentor.id))
+  }
+
+  async function patch(id: number, data: Partial<Omit<Mentor, 'id'>>) {
+    const saved = await api.updateMentor(id, data)
+    setMentors((current) => current!.map((m) => (m.id === saved.id ? saved : m)))
+  }
 
   useEffect(() => {
     api.listMentors().then(setMentors).catch((err) => setError(errorMessage(err, 'Couldn’t load mentors.')))
@@ -23,8 +45,13 @@ export function MentorsPage() {
     e.preventDefault()
     if (!name.trim() || !gender) return
     try {
-      const mentor = await api.createMentor(name.trim(), gender)
-      setMentors((current) => [...(current ?? []), mentor].sort((a, b) => a.name.localeCompare(b.name)))
+      // Redo re-creates them under a new id, which a later undo has to delete.
+      let mentor = await create(name.trim(), gender)
+      push({
+        label: `adding ${mentor.name}`,
+        undo: () => destroy(mentor),
+        redo: async () => (mentor = await create(mentor.name, mentor.gender)),
+      })
       setName('')
       setError(null)
     } catch (err) {
@@ -33,20 +60,27 @@ export function MentorsPage() {
   }
 
   async function update(mentor: Mentor, data: Partial<Omit<Mentor, 'id'>>) {
+    const before = Object.fromEntries(Object.keys(data).map((k) => [k, mentor[k as keyof typeof data]]))
     try {
-      const saved = await api.updateMentor(mentor.id, data)
-      setMentors((current) => current!.map((m) => (m.id === saved.id ? saved : m)))
+      await patch(mentor.id, data)
+      push({ label: `the change to ${mentor.name}`, undo: () => patch(mentor.id, before), redo: () => patch(mentor.id, data) })
       setError(null)
     } catch (err) {
       setError(errorMessage(err, 'Couldn’t save the change.'))
     }
   }
 
-  async function remove(mentor: Mentor) {
-    if (!window.confirm(`Remove ${mentor.name} from the roster? They’ll come off every sheet’s tables.`)) return
+  async function remove(removed: Mentor) {
+    setRemoving(null)
+    let mentor = removed
     try {
-      await api.deleteMentor(mentor.id)
-      setMentors((current) => current!.filter((m) => m.id !== mentor.id))
+      await destroy(mentor)
+      // Undo brings them back as a new roster entry (not re-seated), which redo then removes.
+      push({
+        label: `removing ${mentor.name}`,
+        undo: async () => (mentor = await create(mentor.name, mentor.gender)),
+        redo: () => destroy(mentor),
+      })
     } catch (err) {
       setError(errorMessage(err, 'Couldn’t remove the mentor.'))
     }
@@ -54,10 +88,20 @@ export function MentorsPage() {
 
   return (
     <div className="mentors">
+      <ConfirmDialog
+        open={removing !== null}
+        title={`Remove ${removing?.name ?? 'mentor'} from the roster?`}
+        confirmLabel="Remove"
+        danger
+        onConfirm={() => removing && remove(removing)}
+        onClose={() => setRemoving(null)}
+      >
+        They’ll come off every sheet’s tables.
+      </ConfirmDialog>
       <h1 className="page-title">Mentors</h1>
       <p className="muted mentors-help">
         Your chapter’s roster. Every sheet’s table plan uses it, and mentors sit at tables of their own gender. Mark
-        someone “Not coming” on a sheet’s tables to leave them out of that event.
+        someone “Absent” on a sheet’s tables to leave them out of that event.
       </p>
       <form className="mentor-add" onSubmit={add}>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Mentor name" aria-label="Mentor name" maxLength={120} />

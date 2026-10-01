@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findHeaderRow, genderOf, levelOf, parseSheet, SheetFormatError, statusOf } from './sheetParser'
+import { findHeaderRow, genderOf, importWarnings, levelOf, parseSheet, SheetFormatError, statusOf } from './sheetParser'
 
 const HEADER = [
   'Mentor', 'Contact Status', 'Student Status', 'Attendance', 'Timestamp', 'First & Last Name', 'Nickname (if any)',
@@ -43,6 +43,15 @@ describe('parseSheet', () => {
     expect(result.ignored).toContain('Email Address (Please provide your UCSD email)')
     expect(result.ignored).toContain('WeChat or Line ID (if you would like to be added to our group chat!)')
     expect(result.ignored).toContain('Student Status')
+  })
+
+  it('finds the attendance column and each row’s place in the tab, without reading attendance', () => {
+    const result = parseSheet(SHEET)
+    expect(result.columns.attendance).toBe(3)
+    expect(result.fieldMap.attendance).toBe('Attendance')
+    // Header is row 16; the blank row 22 is skipped.
+    expect(result.rowIndexes).toEqual([17, 18, 19, 20, 21, 23])
+    expect(result.rows[0]).not.toHaveProperty('attendance')
   })
 
   it('standardizes values and keeps no contact details', () => {
@@ -104,10 +113,32 @@ describe('parseSheet', () => {
   })
 })
 
+describe('importWarnings', () => {
+  it('has nothing to say about a well-formatted tab', () => {
+    expect(importWarnings(parseSheet(SHEET))).toEqual([])
+  })
+
+  it('points out odd values and missing columns', () => {
+    const odd = [HEADER, person('Amy Lin', 'Prefer not to say', 'Alumni', 'Maybe'), person('Ben Wu', '', 'Other')]
+    expect(importWarnings(parseSheet(odd))).toEqual([
+      '2 sign-ups have no gender (unrecognized: “Prefer not to say”), so check-in will ask.',
+      '1 sign-up has no enrollment status (unrecognized: “Alumni”), so check-in will ask.',
+      'Unrecognized contact statuses “Maybe” count as Not contacted.',
+      '1 sign-up has enrollment Other: not planned for, and check-in asks before admitting them.',
+    ])
+    const bare = [['Name', 'Nickname'], ['Amy Lin', '']]
+    expect(importWarnings(parseSheet(bare))).toEqual([
+      'No Gender column found, so check-in will ask everyone.',
+      'No Enrollment Status column found, so check-in will ask everyone.',
+      'No Contact Status column found, so everyone counts as Not contacted.',
+    ])
+  })
+})
+
 describe('value normalizers', () => {
   it('maps enrollment statuses to levels', () => {
-    expect(['Masters', 'Undergrad', 'PhD', 'Exchange', 'Visiting Scholar'].map(levelOf)).toEqual([
-      'grad', 'undergrad', 'grad', 'undergrad', 'grad',
+    expect(['Masters', 'Undergrad', 'PhD', 'Exchange', 'Visiting Scholar', 'Other'].map(levelOf)).toEqual([
+      'grad', 'undergrad', 'grad', 'undergrad', 'grad', 'other',
     ])
   })
 
@@ -115,6 +146,9 @@ describe('value normalizers', () => {
     expect(['male', 'Female', 'x'].map(genderOf)).toEqual(['male', 'female', ''])
     expect(['Confirmed', ' awaiting  response ', '', 'nope'].map(statusOf)).toEqual([
       'confirmed', 'awaiting_response', 'not_contacted', null,
+    ])
+    expect(['Not Contacted', 'Waiting To Contact', 'Not Coming', 'No Room', 'Not inviting'].map(statusOf)).toEqual([
+      'not_contacted', 'waiting_to_contact', 'not_coming', 'no_room', 'not_inviting',
     ])
   })
 })

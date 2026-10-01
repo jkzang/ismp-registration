@@ -6,7 +6,7 @@ from django.db.models.functions import Lower
 from django.utils import timezone
 
 FEMALE, MALE = 'female', 'male'
-UNDERGRAD, GRAD = 'undergrad', 'grad'
+UNDERGRAD, GRAD, OTHER = 'undergrad', 'grad', 'other'
 
 
 class Gender(models.TextChoices):
@@ -17,13 +17,18 @@ class Gender(models.TextChoices):
 class Level(models.TextChoices):
     UNDERGRAD = UNDERGRAD, 'Undergrad'
     GRAD = GRAD, 'Grad'
+    # Enrollment "Other": not a student. Kept on the list but never planned for.
+    OTHER = OTHER, 'Other'
 
 
 class ContactStatus(models.TextChoices):
     NOT_CONTACTED = 'not_contacted', 'Not contacted'
+    WAITING_TO_CONTACT = 'waiting_to_contact', 'Waiting to contact'
     AWAITING_RESPONSE = 'awaiting_response', 'Awaiting response'
     CONFIRMED = 'confirmed', 'Confirmed'
     NO_RESPONSE = 'no_response', 'No response'
+    NOT_COMING = 'not_coming', 'Not coming'
+    NO_ROOM = 'no_room', 'No room'
     NOT_INVITING = 'not_inviting', 'Not inviting'
 
 
@@ -70,9 +75,17 @@ class SignupSheet(models.Model):
     spreadsheet_title = models.CharField(max_length=200)
     tab_id = models.BigIntegerField()
     tab_title = models.CharField(max_length=200)
+    # What the organizers call it; blank shows the tab's title.
+    name = models.CharField(max_length=200, blank=True)
     # Standard field -> the sheet's column header it came from, so a re-sync reads the same columns.
     field_map = models.JSONField(default=dict)
+    # What the browser noticed about the tab's formatting at the last import or re-sync, in plain words.
+    warnings = models.JSONField(default=list, blank=True)
     capacity = models.PositiveIntegerField(null=True, blank=True)
+    # Confirmed people's spots are held until 20 minutes after this; see RESERVE_MINUTES in capacity.ts.
+    starts_at = models.DateTimeField(null=True, blank=True)
+    # Set when the door volunteer releases those spots early (or without a start time).
+    reserved_released_at = models.DateTimeField(null=True, blank=True)
     imported_at = models.DateTimeField(auto_now_add=True)
     synced_at = models.DateTimeField(default=timezone.now)
 
@@ -107,6 +120,8 @@ class Signup(models.Model):
     door_level = models.CharField(max_length=10, choices=Level.choices, blank=True)
     checked_in_at = models.DateTimeField(null=True, blank=True)
     checked_in_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    # Set when they're put on the door's waitlist; kept through check-in so undoing it puts them back in line.
+    waitlisted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['sheet', 'row_key'], name='unique_row_per_sheet')]

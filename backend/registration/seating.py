@@ -2,7 +2,8 @@
 
 The organizers' rules: SEPARATE undergrads from grads and guys from girls, seat mentors at tables
 of their own gender, and aim for 3 students per mentor (4 is fine; 5 or more only when there's no
-other choice).
+other choice). A table seats 8 at most: up to 2 mentors and 6 students. Nobody starts a table alone,
+so once their group's tables are full, check-in squeezes students in past 6 rather than open one.
 
 Nobody knows for sure who will come, so students aren't seated ahead of time. Tables are planned
 from expected turnout (each sign-up weighted by how often people with that contact status show
@@ -16,45 +17,47 @@ from collections import Counter, defaultdict
 from rest_framework.exceptions import ValidationError
 
 from . import models
-from .models import FEMALE, GRAD, MALE, UNDERGRAD
+from .models import FEMALE, GRAD, MALE, OTHER, UNDERGRAD
 
 GENDER_ORDER, LEVEL_ORDER = [FEMALE, MALE, ''], [UNDERGRAD, GRAD, '']
+STUDENT_LEVELS = (UNDERGRAD, GRAD)
 
 IDEAL_PER_MENTOR = 3
 MAX_PER_MENTOR = 4
-# Bigger groups let students meet each other: plan tables for two mentors, so 6 students, up to 8.
+# Bigger groups let students meet each other: tables seat 8, two mentors and 6 students. The board
+# holds to both; only check-in goes past 6 students, when every table of the group is full.
 MENTORS_PER_TABLE = 2
+MAX_STUDENTS_PER_TABLE = 6
 
-# Share of people with each contact status who show up (the organizers' estimates).
+# Share of people with each contact status who show up (the organizers' estimates); any other status is 0.
 SHOW_UP_RATES = {
     'confirmed': 0.85,
     'awaiting_response': 0.4,
     'no_response': 0.2,
-    'not_contacted': 0.0,
 }
 
 
 def student_of(signup):
     checked_in = signup.checked_in_at is not None
+    not_a_student = signup.effective_level == OTHER
     return {
         'id': signup.id,
+        # The row's key, so the browser can find their row to tick attendance.
+        'key': signup.row_key,
         'name': signup.name,
         'nickname': signup.nickname,
         'gender': signup.effective_gender,
         'level': signup.effective_level,
         'status': signup.status,
         'checked_in': checked_in,
-        'chance': 1.0 if checked_in else SHOW_UP_RATES.get(signup.status, 0.0),
+        'waitlisted_at': signup.waitlisted_at,
+        'chance': 1.0 if checked_in else 0.0 if not_a_student else SHOW_UP_RATES.get(signup.status, 0.0),
     }
 
 
 def attendees(sheet):
-    """Everyone who might sit at a table: sign-ups (except Not inviting, unless they came anyway) and the chapter's mentors."""
-    students = [
-        student_of(s)
-        for s in sheet.signups.all()
-        if not (s.status == models.ContactStatus.NOT_INVITING and s.checked_in_at is None)
-    ]
+    """Everyone who might sit at a table: every sign-up, whatever their status, and the chapter's mentors."""
+    students = [student_of(s) for s in sheet.signups.all()]
     mentors = [{'id': m.id, 'name': m.name, 'gender': m.gender} for m in sheet.chapter.mentors.all()]
     return students, mentors
 
@@ -62,29 +65,29 @@ def attendees(sheet):
 def _majority_levels(students):
     level_counts = defaultdict(Counter)
     for s in students:
-        if s['gender'] and s['level']:
+        if s['gender'] and s['level'] in STUDENT_LEVELS:
             level_counts[s['gender']][s['level']] += 1
     return {g: c.most_common(1)[0][0] for g, c in level_counts.items()}
 
 
 def expected_by_group(students):
-    """Expected turnout per (gender, level). Unknown level counts toward that gender's larger level;
-    unknown gender isn't counted (the door asks)."""
+    """Expected turnout per (gender, level). Unknown level (or Other, once checked in) counts toward
+    that gender's larger level; unknown gender isn't counted (the door asks)."""
     level_by_gender = _majority_levels(students)
     expected = defaultdict(float)
     for s in students:
         if s['gender']:
-            expected[(s['gender'], s['level'] or level_by_gender.get(s['gender'], UNDERGRAD))] += s['chance']
+            level = s['level'] if s['level'] in STUDENT_LEVELS else level_by_gender.get(s['gender'], UNDERGRAD)
+            expected[(s['gender'], level)] += s['chance']
     return expected
 
 
 def _tables_wanted(expected):
-    """About 6 per table, never planning past 8. A group expecting under one person gets none;
+    """6 per table at most. A group expecting under one person gets none;
     if someone does come, check-in seats them with their gender's other level."""
     if expected < 1:
         return 0
-    ideal, most = IDEAL_PER_MENTOR * MENTORS_PER_TABLE, MAX_PER_MENTOR * MENTORS_PER_TABLE
-    return max(1, math.ceil(expected / most), math.floor(expected / ideal + 0.5))
+    return math.ceil(expected / MAX_STUDENTS_PER_TABLE)
 
 
 def table_groups(expected, mentors):
@@ -120,19 +123,31 @@ def _load(table):
     return _count(table, 'student') / max(_count(table, 'mentor'), 1)
 
 
+def _has_room(table, kind):
+    return _count(table, kind) < (MAX_STUDENTS_PER_TABLE if kind == 'student' else MENTORS_PER_TABLE)
+
+
 def pick_table(tables, student):
     """Index of the table to seat a student at on check-in, or None if there's no table for their gender.
 
     Fills one table before starting the next: the fullest table of their group with room for 3
     per mentor, then the same up to 4, and only then the least-full one. Levels stay apart: the
     other level's tables are used only when their own level has none. Tables with a mentor come
-    first. Never the other gender's table."""
+    first. Never the other gender's table. If all their group's tables are full (6 students), they
+    take an extra seat at the least-full one: a new table would leave them sitting alone."""
     same_gender = [i for i, t in enumerate(tables) if student['gender'] and t.get('gender') == student['gender']]
-    own_level = [i for i in same_gender if not student['level'] or tables[i].get('level') in ('', student['level'])]
+    # Unknown or Other level: any table of their gender will do.
+    own_level = [
+        i for i in same_gender
+        if student['level'] not in STUDENT_LEVELS or tables[i].get('level') in ('', student['level'])
+    ]
     candidates = own_level or same_gender
-    candidates = [i for i in candidates if _count(tables[i], 'mentor')] or candidates
     if not candidates:
         return None
+    with_room = [i for i in candidates if _has_room(tables[i], 'student')]
+    if not with_room:
+        return min(candidates, key=lambda i: (not _count(tables[i], 'mentor'), _count(tables[i], 'student'), i))
+    candidates = [i for i in with_room if _count(tables[i], 'mentor')] or with_room
 
     def fits(i, per_mentor):
         return (_count(tables[i], 'student') + 1) / max(_count(tables[i], 'mentor'), 1) <= per_mentor
@@ -147,7 +162,7 @@ def pick_table(tables, student):
 def group_of(students):
     """(gender, level) for a table from who's sitting there, for tables saved without a group."""
     genders = Counter(s['gender'] for s in students if s['gender'])
-    levels = {s['level'] for s in students if s['level']}
+    levels = {s['level'] for s in students if s['level'] in STUDENT_LEVELS}
     return (genders.most_common(1)[0][0] if genders else '', levels.pop() if len(levels) == 1 else '')
 
 
@@ -156,7 +171,8 @@ def _new_table(gender, level):
 
 
 def generate(students, mentors, existing_tables, rng=None):
-    """Plans the tables and seats the mentors.
+    """Plans the tables and seats the mentors, at most 2 a table. Mentors left over stay unseated
+    for the organizer to place.
 
     Students aren't seated here, except ones already checked in or locked to a table by hand,
     who keep their table."""
@@ -196,9 +212,12 @@ def generate(students, mentors, existing_tables, rng=None):
     rng.shuffle(unplaced_mentors)
     unplaced_mentors.sort(key=lambda m: not m['gender'])
     for m in unplaced_mentors:
-        candidates = [i for i, t in enumerate(tables) if not m['gender'] or t['gender'] == m['gender']]
+        candidates = [
+            i for i, t in enumerate(tables)
+            if (not m['gender'] or t['gender'] == m['gender']) and _has_room(t, 'mentor')
+        ]
         if not candidates:
-            continue  # no table of their gender: leave them for the organizer to place
+            continue  # no table of their gender with room: leave them for the organizer to place
         # Every table gets one mentor before any table gets a second.
         index = min(candidates, key=lambda i: (_count(tables[i], 'mentor'), i))
         tables[index]['members'].append({'kind': 'mentor', 'id': m['id'], 'locked': False})
@@ -227,7 +246,7 @@ def seat_at_check_in(signup):
     """Seats a student who just checked in and returns their table (None if there's no table for them).
 
     Call inside a transaction: the plan row is locked so volunteers checking people in at the
-    same moment don't overwrite each other's seats."""
+    same moment don't overwrite each other's seats. May add a table when their group's are full."""
     plan = models.SeatingPlan.objects.select_for_update().filter(sheet_id=signup.sheet_id).first()
     if plan is None:
         return None
@@ -258,7 +277,8 @@ def keep_new_check_ins(submitted, stored, signups, seen_at):
     """Puts back seats handed out at check-in after the board was loaded (at `seen_at`).
 
     A board save replaces every table, and the organizer never saw those people, so a save
-    mustn't drop them."""
+    mustn't drop them. A table the organizer filled since then keeps the organizer's version;
+    the newcomer shows as not seated."""
     if seen_at is None:
         return submitted
     newcomers = {s.id for s in signups if s.checked_in_at and s.checked_in_at > seen_at}
@@ -267,12 +287,16 @@ def keep_new_check_ins(submitted, stored, signups, seen_at):
     for table in stored:
         for member in table['members']:
             if member['kind'] == 'student' and member['id'] in newcomers - seated and table['id'] in by_id:
-                by_id[table['id']]['members'].append(member)
+                if _has_room(by_id[table['id']], 'student'):
+                    by_id[table['id']]['members'].append(member)
     return submitted
 
 
-def clean_tables(tables, students, mentors, excluded_mentor_ids):
-    """Checks a board edit: known people only, nobody twice, and no excluded mentors seated."""
+def clean_tables(tables, students, mentors, excluded_mentor_ids, stored=()):
+    """Checks a board edit: known people only, nobody twice, no excluded mentors seated, and no
+    table over 2 mentors or over 6 students. A table check-in took past 6 (see `stored`) may stay
+    that full, but no fuller."""
+    stored_students = {t['id']: _count(t, 'student') for t in stored}
     student_ids = {s['id'] for s in students}
     mentor_ids = {m['id'] for m in mentors}
     seen, table_ids = set(), set()
@@ -280,6 +304,11 @@ def clean_tables(tables, students, mentors, excluded_mentor_ids):
         if table['id'] in table_ids:
             raise ValidationError('Each table needs a unique id.')
         table_ids.add(table['id'])
+        most_students = max(MAX_STUDENTS_PER_TABLE, stored_students.get(table['id'], 0))
+        if _count(table, 'student') > most_students or _count(table, 'mentor') > MENTORS_PER_TABLE:
+            raise ValidationError(
+                f'A table can have at most {MAX_STUDENTS_PER_TABLE} students and {MENTORS_PER_TABLE} mentors.'
+            )
         for member in table['members']:
             key = (member['kind'], member['id'])
             known = student_ids if member['kind'] == 'student' else mentor_ids

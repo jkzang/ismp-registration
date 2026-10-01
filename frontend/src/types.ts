@@ -2,6 +2,9 @@ import type { ContactStatus, FieldMap, Gender, Level, SignupRow } from './sheetP
 
 export type { ContactStatus, FieldMap, Gender, Level, SignupRow }
 
+/** Tables are grouped by student level only; "Other" sits at either. */
+export type TableLevel = Exclude<Level, 'other'>
+
 export type AppConfig = {
   google_client_id: string
   google_api_key: string
@@ -18,12 +21,20 @@ export type Mentor = { id: number; name: string; gender: Gender }
 
 export type Sheet = {
   id: number
+  /** Blank until someone renames it; see sheetName. */
+  name: string
   spreadsheet_id: string
   spreadsheet_title: string
   tab_id: number
   tab_title: string
   field_map: FieldMap
+  /** Formatting problems noticed at the last import or re-sync. */
+  warnings: string[]
   capacity: number | null
+  /** When the event starts; confirmed people's spots are reserved until a little after. See capacity.ts. */
+  starts_at: string | null
+  /** When the door volunteer released the reserved spots early. */
+  reserved_released_at: string | null
   imported_at: string
   synced_at: string
   expires_at: string
@@ -36,6 +47,7 @@ export type SheetRows = {
   tab_title: string
   field_map: FieldMap
   rows: SignupRow[]
+  warnings: string[]
 }
 
 export type NewSheet = SheetRows & { spreadsheet_id: string; tab_id: number }
@@ -44,9 +56,12 @@ export type ResyncResult = { sheet: Sheet; added: number; updated: number; remov
 
 export const CONTACT_STATUSES: { value: ContactStatus; label: string }[] = [
   { value: 'not_contacted', label: 'Not contacted' },
+  { value: 'waiting_to_contact', label: 'Waiting to contact' },
   { value: 'awaiting_response', label: 'Awaiting response' },
   { value: 'confirmed', label: 'Confirmed' },
   { value: 'no_response', label: 'No response' },
+  { value: 'not_coming', label: 'Not coming' },
+  { value: 'no_room', label: 'No room' },
   { value: 'not_inviting', label: 'Not inviting' },
 ]
 
@@ -56,18 +71,22 @@ export type SeatingTable = {
   id: string
   name: string
   gender: Gender | ''
-  level: Level | ''
+  level: TableLevel | ''
   members: TableMember[]
 }
 
 export type PlanStudent = {
   id: number
+  /** Matches SignupRow.key, to find their row in the sheet. */
+  key: string
   name: string
   nickname: string
   gender: Gender | ''
   level: Level | ''
   status: ContactStatus
   checked_in: boolean
+  /** When they were put on the door's waitlist; kept after check-in. See capacity.ts. */
+  waitlisted_at: string | null
   chance: number
 }
 
@@ -78,7 +97,7 @@ export type SeatingPlan = {
   excluded_mentor_ids: number[]
   students: PlanStudent[]
   mentors: PlanMentor[]
-  expected: { gender: Gender; level: Level; count: number }[]
+  expected: { gender: Gender; level: TableLevel; count: number }[]
   show_up_rates: Partial<Record<ContactStatus, number>>
   updated_at: string
 }
@@ -86,3 +105,6 @@ export type SeatingPlan = {
 export type SeatedTable = { id: string; name: string; mentors: string[] }
 
 export type CheckInResult = { student: PlanStudent; table: SeatedTable | null }
+
+/** What a sheet is called in the app: its given name, else its tab's title. */
+export const sheetName = (sheet: Sheet) => sheet.name || sheet.tab_title

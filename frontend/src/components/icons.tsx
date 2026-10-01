@@ -121,3 +121,45 @@ export function RefreshIcon() {
     </svg>
   )
 }
+
+export function SidebarIcon() {
+  return (
+    <svg {...base}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16" />
+    </svg>
+  )
+}
+
+export function ExternalIcon() {
+  return (
+    <svg {...base}>
+      <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+    </svg>
+  )
+}
+
+export function PencilIcon() {
+  return (
+    <svg {...base}>
+      <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4ZM13.5 6.5l4 4" />
+    </svg>
+  )
+}
+
+export function WarningIcon() {
+  return (
+    <svg {...base}>
+      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01" />
+    </svg>
+  )
+}
+
+export function ClockIcon() {
+  return (
+    <svg {...base}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  )
+}

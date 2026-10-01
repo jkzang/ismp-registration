@@ -159,7 +159,7 @@ class ImportTests(ApiTestBase):
         for rows in ([row('k1', 'A', gender='other')], [row('k1', 'A', status='maybe')], [row('k', 'A'), row('k', 'B')]):
             response = self.client.post('/api/sheets/', import_body(rows), format='json')
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, rows)
-        response = self.client.post('/api/sheets/', import_body([], field_map={'email': 'Email'}), format='json')
+        response = self.client.post('/api/sheets/', import_body([], field_map={'wechat': 'WeChat ID'}), format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_resync_keeps_check_ins_and_door_answers(self):
@@ -181,12 +181,32 @@ class ImportTests(ApiTestBase):
         self.assertEqual(sorted(sheet.signups.values_list('name', flat=True)), ['Amy Lin', 'Cat', 'Dan'])
         self.assertEqual(response.data['sheet']['tab_title'], 'Renamed')
 
-    def test_capacity_is_the_only_editable_field(self):
+    def test_warnings_are_kept_until_the_next_sync(self):
+        response = self.client.post('/api/sheets/', import_body([row('k1', 'Amy')], warnings=['No Gender column found.']), format='json')
+        self.assertEqual(response.data['warnings'], ['No Gender column found.'])
+        response = self.client.put(f"/api/sheets/{response.data['id']}/rows/", {
+            'spreadsheet_title': 'Fall Kickoff', 'tab_title': 'Form Responses 1', 'field_map': {'name': 'Name'},
+            'rows': [row('k1', 'Amy')],
+        }, format='json')
+        self.assertEqual(response.data['sheet']['warnings'], [])
+
+    def test_start_time_and_early_release_are_editable(self):
+        sheet = self.import_sheet([])
+        response = self.client.patch(f'/api/sheets/{sheet.id}/', {'starts_at': '2026-10-01T19:00:00Z'}, format='json')
+        self.assertEqual((response.data['starts_at'], response.data['reserved_released_at']), ('2026-10-01T19:00:00Z', None))
+        response = self.client.patch(f'/api/sheets/{sheet.id}/', {'reserved_released_at': '2026-10-01T19:10:00Z'}, format='json')
+        self.assertEqual(response.data['reserved_released_at'], '2026-10-01T19:10:00Z')
+        response = self.client.patch(f'/api/sheets/{sheet.id}/', {'starts_at': None, 'reserved_released_at': None}, format='json')
+        self.assertEqual((response.data['starts_at'], response.data['reserved_released_at']), (None, None))
+
+    def test_import_details_are_read_only(self):
         sheet = self.import_sheet([])
         response = self.client.patch(f'/api/sheets/{sheet.id}/', {'capacity': 40, 'tab_title': 'x'}, format='json')
         self.assertEqual((response.data['capacity'], response.data['tab_title']), (40, 'Form Responses 1'))
         response = self.client.patch(f'/api/sheets/{sheet.id}/', {'capacity': None}, format='json')
         self.assertIsNone(response.data['capacity'])
+        response = self.client.patch(f'/api/sheets/{sheet.id}/', {'name': '  Fall kickoff  '}, format='json')
+        self.assertEqual((response.data['name'], response.data['tab_title']), ('Fall kickoff', 'Form Responses 1'))
 
     def test_other_chapters_sheets_are_off_limits(self):
         other_user = make_member('333', self.other_chapter)
@@ -198,9 +218,23 @@ class ImportTests(ApiTestBase):
         for method, url in (
             ('get', f'/api/sheets/{sheet.id}/'), ('get', f'/api/sheets/{sheet.id}/plan/'),
             ('delete', f'/api/sheets/{sheet.id}/'), ('post', f'/api/signups/{signup.id}/check-in/'),
-            ('put', f'/api/sheets/{sheet.id}/rows/'),
+            ('post', f'/api/signups/{signup.id}/waitlist/'), ('put', f'/api/sheets/{sheet.id}/rows/'),
         ):
             self.assertEqual(getattr(self.client, method)(url, {}, format='json').status_code, status.HTTP_404_NOT_FOUND, url)
+
+    def test_waitlist_survives_check_in_and_its_undo(self):
+        sheet = self.import_sheet([row('k1', 'Amy', status='awaiting_response')])
+        amy = sheet.signups.get()
+        response = self.client.post(f'/api/signups/{amy.id}/waitlist/')
+        self.assertIsNotNone(response.data['student']['waitlisted_at'])
+        self.client.post(f'/api/signups/{amy.id}/check-in/')
+        # Already in, so there's nothing to wait for.
+        self.assertEqual(self.client.post(f'/api/signups/{amy.id}/waitlist/').status_code, status.HTTP_400_BAD_REQUEST)
+        response = self.client.post(f'/api/signups/{amy.id}/undo-check-in/')
+        self.assertFalse(response.data['student']['checked_in'])
+        self.assertIsNotNone(response.data['student']['waitlisted_at'])
+        response = self.client.post(f'/api/signups/{amy.id}/undo-waitlist/')
+        self.assertIsNone(response.data['student']['waitlisted_at'])
 
     def test_chapter_members_share_sheets(self):
         sheet = self.import_sheet([row('k1', 'Amy')])
@@ -256,7 +290,7 @@ class SeatingBase(ApiTestBase):
 
 class TablePlanningTests(SeatingBase):
     def test_tables_come_from_expected_turnout_and_seat_no_students_yet(self):
-        self.add_students(16, 'female', 'undergrad')  # 16 x 0.85 = 13.6 expected, about 6 a table
+        self.add_students(12, 'female', 'undergrad')  # 12 x 0.85 = 10.2 expected, 6 a table at most
         for name in ('Mia', 'Ava', 'Zoe', 'Ivy'):
             self.add_mentor(name, 'female')
         data = self.generate()
@@ -276,10 +310,17 @@ class TablePlanningTests(SeatingBase):
             ('male', 'undergrad'): 2.0, ('male', 'grad'): 4.0,
         })
 
-    def test_not_inviting_is_left_off_unless_they_checked_in(self):
-        skipped, came = self.add_students(2, 'female', 'grad', status='not_inviting')
-        self.check_in(came)
-        self.assertEqual([s['id'] for s in self.plan()['students']], [came.id])
+    def test_every_status_is_listed_but_only_some_count_toward_turnout(self):
+        for status in ('waiting_to_contact', 'not_coming', 'no_room', 'not_inviting'):
+            self.add_students(10, 'female', 'grad', status=status)
+        data = self.plan()
+        self.assertEqual(len(data['students']), 40)
+        self.assertEqual(sum(e['count'] for e in data['expected']), 0)
+
+    def test_new_statuses_can_be_imported(self):
+        rows = [row(f'k{i}', f'P{i}', status=s) for i, s in enumerate(('waiting_to_contact', 'not_coming', 'no_room'))]
+        response = self.client.post('/api/sheets/', import_body(rows), format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
 
     def test_tables_are_capped_by_mentors_of_that_gender(self):
         self.add_students(20, 'female', 'undergrad')
@@ -297,6 +338,15 @@ class TablePlanningTests(SeatingBase):
         self.add_students(12, 'male', 'grad')
         self.assertEqual(self.groups(self.generate()), [('male', 'grad')] * 2)
 
+    def test_no_table_gets_more_than_two_mentors(self):
+        self.add_students(7, 'female', 'undergrad')  # 5.95 expected: one table
+        mentors = [self.add_mentor(name, 'female') for name in ('Mia', 'Ava', 'Zoe')]
+        data = self.generate()
+        self.assertEqual(len(data['tables']), 1)
+        seated = [m['id'] for m in data['tables'][0]['members'] if m['kind'] == 'mentor']
+        self.assertEqual(len(seated), 2)
+        self.assertTrue(set(seated) < {m.pk for m in mentors})
+
     def test_mentor_with_no_matching_tables_is_left_for_the_organizer(self):
         self.add_students(6, 'female', 'grad')
         lonely = self.add_mentor('Leo', 'male')
@@ -313,21 +363,32 @@ class TablePlanningTests(SeatingBase):
         self.assertNotIn(away.pk, seated)
         self.assertEqual(data['excluded_mentor_ids'], [away.pk])
 
-    def test_locked_and_checked_in_students_keep_their_table_on_regenerate(self):
+    def test_locked_students_keep_their_table_on_regenerate(self):
         students = self.add_students(16, 'female', 'undergrad')
         for name in ('Mia', 'Ava', 'Zoe', 'Ivy'):
             self.add_mentor(name, 'female')
-        self.generate()
-        arrived = students[0]
-        home = self.check_in(arrived)['table']['id']
-        tables = self.plan()['tables']
+        tables = self.generate()['tables']
         tables[1]['members'].append({'kind': 'student', 'id': students[1].id, 'locked': True})
         self.save_plan({'tables': tables})
         pinned_table = tables[1]['id']
         for _ in range(3):
             regenerated = {t['id']: t for t in self.generate()['tables']}
-            self.assertIn(arrived.id, [m['id'] for m in regenerated[home]['members']])
             self.assertIn({'kind': 'student', 'id': students[1].id, 'locked': True}, regenerated[pinned_table]['members'])
+
+    def test_first_plan_is_allowed_after_check_in_starts(self):
+        student = self.add_students(6, 'female', 'grad')[0]
+        self.add_mentor('Mia', 'female')
+        self.check_in(student)
+        self.assertEqual(self.seated_students(self.generate()), [[student.id]])
+
+    def test_no_re_plan_once_check_in_starts(self):
+        student = self.add_students(6, 'female', 'grad')[0]
+        self.add_mentor('Mia', 'female')
+        before = self.generate()['tables']
+        self.check_in(student)
+        response = self.client.post(f'/api/sheets/{self.sheet.id}/plan/generate/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual([t['id'] for t in self.plan()['tables']], [t['id'] for t in before])
 
     def test_board_edits_are_validated(self):
         a, b = self.add_students(2, 'female', 'grad')
@@ -340,6 +401,8 @@ class TablePlanningTests(SeatingBase):
             {'tables': [table('t1', [{'kind': 'mentor', 'id': other_mentor.pk}])]},
             {'tables': [table('t1', [{'kind': 'mentor', 'id': mentor.pk}])], 'excluded_mentor_ids': [mentor.pk]},
             {'tables': [table('t1', [], gender='other')]},
+            {'tables': [table('t1', [{'kind': 'student', 'id': s.id} for s in self.add_students(7, 'female', 'grad')])]},
+            {'tables': [table('t1', [{'kind': 'mentor', 'id': self.add_mentor(n, 'female').pk} for n in 'XYZ'])]},
         )
         for body in bodies:
             self.assertEqual(self.save_plan(body).status_code, status.HTTP_400_BAD_REQUEST, body)
@@ -369,27 +432,58 @@ class TablePlanningTests(SeatingBase):
         self.assertEqual(data['tables'][0]['members'], [{'kind': 'student', 'id': a.id, 'locked': False}])
 
 
+class NotAStudentTests(SeatingBase):
+    def test_other_is_listed_but_not_planned_for(self):
+        self.add_students(10, 'female', 'other')
+        data = self.plan()
+        self.assertEqual([s['level'] for s in data['students']], ['other'] * 10)
+        self.assertEqual(sum(e['count'] for e in data['expected']), 0)
+        self.assertEqual(self.generate()['tables'], [])
+
+    def test_other_checked_in_sits_at_either_level(self):
+        self.add_students(3, 'female', 'grad')
+        guest = self.add_students(1, 'female', 'other')[0]
+        self.add_mentor('Mia', 'female')
+        self.generate()
+        self.assertEqual(self.check_in(guest)['table']['name'], 'Table 1')
+
+    def test_tables_cannot_be_grouped_as_other(self):
+        body = {'tables': [{'id': 't1', 'name': 'T', 'gender': 'female', 'level': 'other', 'members': []}]}
+        self.assertEqual(self.save_plan(body).status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_other_can_be_imported(self):
+        response = self.client.post('/api/sheets/', import_body([row('k1', 'Pat', 'male', 'other')]), format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+
 class CheckInSeatingTests(SeatingBase):
-    def test_check_in_fills_one_table_to_six_before_the_next_then_eight(self):
-        students = self.add_students(17, 'female', 'undergrad', status='not_contacted')
-        self.add_students(16, 'female', 'undergrad')
+    def test_check_in_fills_one_table_to_six_then_squeezes_in_rather_than_add_a_table(self):
+        students = self.add_students(13, 'female', 'undergrad', status='not_contacted')
+        self.add_students(12, 'female', 'undergrad')  # 10.2 expected: two tables
         for name in ('Mia', 'Ava', 'Zoe', 'Ivy'):
             self.add_mentor(name, 'female')
         self.generate()
         sizes = lambda: [len(t) for t in self.seated_students(self.plan())]
         for s in students[:7]:
             self.check_in(s)
-        self.assertEqual(sizes(), [6, 1])
+        self.assertEqual(sizes(), [6, 1])  # with Table 2's mentors
         for s in students[7:12]:
             self.check_in(s)
         self.assertEqual(sizes(), [6, 6])
-        self.check_in(students[12])
+        # Nobody starts a new table alone: they take a 7th seat at Table 1.
+        self.assertEqual(self.check_in(students[12])['table']['name'], 'Table 1')
         self.assertEqual(sizes(), [7, 6])
-        for s in students[13:16]:
+
+    def test_board_save_keeps_a_table_check_in_took_past_six_but_no_fuller(self):
+        students = self.add_students(8, 'female', 'grad')
+        self.add_mentor('Mia', 'female')
+        self.generate()
+        for s in students[:7]:
             self.check_in(s)
-        self.assertEqual(sizes(), [8, 8])
-        self.assertIsNotNone(self.check_in(students[16])['table'])
-        self.assertEqual(sorted(sizes()), [8, 9])
+        data = self.plan()
+        self.assertEqual(self.save_plan({'tables': data['tables']}).status_code, status.HTTP_200_OK)
+        data['tables'][0]['members'].append({'kind': 'student', 'id': students[7].id, 'locked': True})
+        self.assertEqual(self.save_plan({'tables': data['tables']}).status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_levels_stay_apart_even_past_four(self):
         undergrads = self.add_students(5, 'female', 'undergrad', status='not_contacted')

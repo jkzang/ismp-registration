@@ -2,7 +2,11 @@ from rest_framework import serializers
 
 from . import models
 
-FIELD_KEYS = ('name', 'first_name', 'last_name', 'nickname', 'gender', 'level', 'status', 'timestamp')
+# Header names only; the phone and email columns are used for matching in the browser, never imported.
+FIELD_KEYS = (
+    'name', 'first_name', 'last_name', 'nickname', 'gender', 'level', 'status', 'timestamp',
+    'attendance', 'phone', 'email',
+)
 
 
 class ChapterSerializer(serializers.ModelSerializer):
@@ -41,6 +45,7 @@ class RowsSerializer(serializers.Serializer):
     tab_title = serializers.CharField(max_length=200)
     field_map = serializers.DictField(child=serializers.CharField(max_length=200, allow_blank=True))
     rows = RowSerializer(many=True, max_length=5000)
+    warnings = serializers.ListField(child=serializers.CharField(max_length=500), max_length=20, required=False, default=list)
 
     def validate_field_map(self, value):
         unknown = set(value) - set(FIELD_KEYS)
@@ -68,10 +73,14 @@ class SheetSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.SignupSheet
         fields = [
-            'id', 'spreadsheet_id', 'spreadsheet_title', 'tab_id', 'tab_title', 'field_map', 'capacity',
-            'imported_at', 'synced_at', 'expires_at', 'imported_by', 'signup_count',
+            'id', 'name', 'spreadsheet_id', 'spreadsheet_title', 'tab_id', 'tab_title', 'field_map', 'warnings',
+            'capacity', 'starts_at', 'reserved_released_at', 'imported_at', 'synced_at', 'expires_at', 'imported_by',
+            'signup_count',
         ]
-        read_only_fields = [f for f in fields if f != 'capacity']
+        read_only_fields = [f for f in fields if f not in ('name', 'capacity', 'starts_at', 'reserved_released_at')]
+
+    def validate_name(self, value):
+        return value.strip()
 
     def get_imported_by(self, sheet):
         profile = getattr(sheet.imported_by, 'profile', None) if sheet.imported_by else None
@@ -80,7 +89,7 @@ class SheetSerializer(serializers.ModelSerializer):
 
 class CheckInSerializer(serializers.Serializer):
     gender = serializers.ChoiceField(choices=models.Gender.choices, required=False)
-    level = serializers.ChoiceField(choices=models.Level.choices, required=False)
+    level = serializers.ChoiceField(choices=[models.UNDERGRAD, models.GRAD], required=False)
 
 
 class TableMemberSerializer(serializers.Serializer):
@@ -93,7 +102,7 @@ class TableSerializer(serializers.Serializer):
     id = serializers.CharField(max_length=32)
     name = serializers.CharField(max_length=60)
     gender = serializers.ChoiceField(choices=models.Gender.choices, allow_blank=True, default='')
-    level = serializers.ChoiceField(choices=models.Level.choices, allow_blank=True, default='')
+    level = serializers.ChoiceField(choices=[models.UNDERGRAD, models.GRAD], allow_blank=True, default='')
     members = TableMemberSerializer(many=True, max_length=200)
 
 

@@ -137,6 +137,17 @@ button.primary:hover {
   color: var(--accent-contrast);
 }
 
+button.danger {
+  background: var(--error);
+  color: #ffffff;
+}
+
+button.danger:hover {
+  background: var(--error);
+  color: #ffffff;
+  filter: brightness(0.92);
+}
+
 button:disabled {
   opacity: 0.55;
   cursor: default;
@@ -241,600 +252,6 @@ input[type='radio'] {
   color: var(--accent);
 }
 
-/* Check-in */
-
-.checkin {
-  max-width: 640px;
-}
-
-.spots-banner {
-  /* Stays in view while scrolling a long list at the door. */
-  position: sticky;
-  top: 8px;
-  z-index: 5;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding: 16px 20px;
-  margin-bottom: 16px;
-  border-radius: 12px;
-  background: #dcfce7;
-  color: #14532d;
-}
-
-.spots-banner.is-full {
-  background: #fef3c7;
-  color: #78350f;
-}
-
-.spots-banner.is-over {
-  background: #dc2626;
-  color: #fff;
-}
-
-.spots-number {
-  font-size: 36px;
-  font-weight: 700;
-  line-height: 1;
-  margin-right: 8px;
-}
-
-.spots-label {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.spots-detail {
-  font-size: 14px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .spots-banner {
-    background: #14532d;
-    color: #dcfce7;
-  }
-
-  .spots-banner.is-full {
-    background: #78350f;
-    color: #fef3c7;
-  }
-
-  .spots-banner.is-over {
-    background: #b91c1c;
-    color: #fff;
-  }
-}
-
-.checkin-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  margin-bottom: 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--text-muted);
-}
-
-.checkin-search:focus-within {
-  border-color: var(--accent);
-}
-
-.checkin-search input {
-  border: none;
-  padding: 12px 0;
-  font-size: 16px;
-  outline: none;
-  background: transparent;
-}
-
-.checkin-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.checkin-list li {
-  padding: 12px 4px;
-  border-bottom: 1px solid var(--border);
-}
-
-.checkin-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.checkin-table {
-  align-self: flex-start;
-  margin-top: 4px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.checkin-walkin {
-  margin: -4px 0 8px;
-  font-size: 14px;
-}
-
-.checkin-list li.is-asking {
-  background: var(--surface);
-  border-radius: 12px;
-  padding: 12px;
-}
-
-.checkin-ask {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 12px;
-  margin-top: 12px;
-}
-
-.checkin-ask p {
-  flex-basis: 100%;
-  margin: 0;
-  font-size: 14px;
-}
-
-.segmented {
-  display: inline-flex;
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--btn);
-}
-
-.segmented button,
-.checkin-list .segmented button {
-  min-width: 0;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  font-weight: 600;
-}
-
-.segmented button.is-on {
-  background: var(--bg);
-  color: var(--accent);
-  box-shadow: var(--shadow-card);
-}
-
-/* Where the person just checked in should sit; big enough to read at arm's length. */
-.seat-card {
-  /* Scrolled to after a check-in; leaves room for the sticky banners above it. */
-  scroll-margin-top: 160px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 20px;
-  margin-bottom: 16px;
-  border-radius: 14px;
-  background: var(--brand-gradient);
-  color: #fff;
-}
-
-.seat-card.is-unseated {
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-
-.seat-card-who {
-  font-size: 14px;
-  font-weight: 600;
-  opacity: 0.9;
-}
-
-.seat-card-table {
-  font-size: 40px;
-  font-weight: 800;
-  line-height: 1.1;
-}
-
-.seat-card-mentor {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.seat-card-note {
-  margin-top: 4px;
-  font-size: 16px;
-}
-
-.seat-card-close {
-  flex: none;
-}
-
-.checkin-person {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.checkin-name {
-  font-size: 17px;
-  font-weight: 600;
-}
-
-.checkin-nickname {
-  font-size: 14px;
-  color: var(--text-muted);
-}
-
-.checkin-list li.is-in .checkin-name {
-  color: var(--text-muted);
-}
-
-.checkin-list button {
-  flex: none;
-  min-width: 124px;
-  padding: 10px 14px;
-  font-weight: 600;
-}
-
-.checkin-done {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  color: #166534;
-  background: #dcfce7;
-  border-color: #bbf7d0;
-}
-
-.checkin-done svg {
-  width: 16px;
-  height: 16px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .checkin-done {
-    color: #bbf7d0;
-    background: #14532d;
-    border-color: #166534;
-  }
-}
-
-.checkin-empty {
-  color: var(--text-muted);
-  justify-content: center !important;
-}
-
-/* Tables board */
-
-.dg-controls {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px 20px;
-}
-
-.dg-help {
-  margin: 10px 0 14px;
-  max-width: 820px;
-}
-
-.dg-expected {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  list-style: none;
-  padding: 0;
-  margin: 14px 0 0;
-}
-
-.dg-expected li {
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-size: 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-}
-
-.dg-waiting {
-  margin-top: 10px;
-  font-size: 14px;
-}
-
-.dg-waiting summary {
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.dg-waiting p {
-  margin: 6px 0;
-}
-
-.dg-notice {
-  padding: 8px 12px;
-  margin-bottom: 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  background: #fef3c7;
-  color: #78350f;
-}
-
-@media (prefers-color-scheme: dark) {
-  .dg-notice {
-    background: #422006;
-    color: #fde68a;
-  }
-}
-
-.dg-tray {
-  padding: 12px 14px;
-  margin-bottom: 16px;
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.dg-tray-head {
-  margin-bottom: 8px;
-  font-size: 14px;
-}
-
-.dg-away {
-  margin-top: 10px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.dg-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
-  align-items: start;
-}
-
-.dg-table {
-  padding: 12px 12px 10px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg);
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.dg-table.has-warning {
-  border-color: #f59e0b;
-}
-
-.dg-tray.is-drop-target,
-.dg-table.is-drop-target {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
-}
-
-.dg-table-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.dg-table-head h4 {
-  margin: 0 auto 0 0;
-  font-size: 15px;
-}
-
-.dg-group {
-  max-width: 60%;
-  margin-right: 4px;
-  padding: 3px 6px;
-  font-size: 13px;
-}
-
-.dg-composition {
-  margin: 2px 0 8px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.dg-warnings {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 0 0 8px;
-  padding: 0;
-}
-
-.dg-warnings li {
-  font-size: 12px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text-muted);
-}
-
-.dg-warnings li.is-serious {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-@media (prefers-color-scheme: dark) {
-  .dg-warnings li.is-serious {
-    background: #78350f;
-    color: #fde68a;
-  }
-}
-
-.dg-chips {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.dg-chips.is-row {
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.dg-empty {
-  padding: 14px;
-  text-align: center;
-  font-size: 13px;
-  color: var(--text-muted);
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-}
-
-.person-chip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 5px 6px 5px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
-  cursor: grab;
-}
-
-.person-chip:active {
-  cursor: grabbing;
-}
-
-.person-chip.is-mentor {
-  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
-  border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
-}
-
-.person-chip.is-gone {
-  opacity: 0.6;
-}
-
-.dg-chips.is-row .person-chip {
-  max-width: 100%;
-}
-
-.person-main {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  min-width: 0;
-}
-
-.person-name {
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
-
-.person-nick {
-  color: var(--text-muted);
-}
-
-.person-tags {
-  display: inline-flex;
-  gap: 3px;
-}
-
-.person-tag {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 0 5px;
-  line-height: 16px;
-  border-radius: 4px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-}
-
-/* Chip controls appear on hover or keyboard focus, and always on touch screens. */
-.person-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  flex: none;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-
-.person-chip:hover .person-actions,
-.person-chip:focus-within .person-actions {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .person-actions {
-    opacity: 1;
-  }
-}
-
-/* A locked person's lock stays visible so it's clear why they didn't move. */
-.person-actions:has(.chip-icon.is-on) {
-  opacity: 1;
-}
-
-.chip-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--text-muted);
-}
-
-.chip-icon svg {
-  width: 15px;
-  height: 15px;
-}
-
-.chip-icon.is-on {
-  color: var(--accent);
-}
-
-.chip-move {
-  width: auto;
-  max-width: 96px;
-  padding: 2px 4px;
-  font-size: 12px;
-}
-
-.chip-text {
-  padding: 2px 6px;
-  font-size: 12px;
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.chip-text:hover {
-  color: var(--error);
-}
-
-.dg-add-table {
-  justify-content: center;
-  min-height: 80px;
-  border: 1.5px dashed var(--input-border);
-  border-radius: 12px;
-  background: transparent;
-  color: var(--accent);
-}
-
-.dg-add-table:hover {
-  border-color: var(--accent-fill);
-  background: var(--accent-soft);
-}
 /* App shell: the sidebar sits on the gray frame and the page is a rounded white panel. */
 
 .shell {
@@ -846,8 +263,11 @@ input[type='radio'] {
 .shell-main {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   margin: 8px 8px 8px 0;
-  min-height: calc(100vh - 16px);
+  height: calc(100dvh - 16px);
+  overflow: hidden;
   border-radius: 16px;
   background: var(--bg);
   box-shadow: var(--shadow-card);
@@ -858,15 +278,91 @@ input[type='radio'] {
 }
 
 .sidebar {
+  --sidebar-w: 248px;
+  --rail-w: 56px;
   position: sticky;
   top: 0;
   flex: none;
+  width: var(--sidebar-w);
+  height: 100vh;
+  overflow: hidden;
+  transition: width 0.22s ease;
+}
+
+/* The full sidebar keeps its width while the sidebar narrows, so it's clipped rather than squeezed. */
+.sidebar-full {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  width: 248px;
-  height: 100vh;
+  width: var(--sidebar-w);
+  height: 100%;
   padding: 18px 14px 14px;
+  transition: opacity 0.15s ease;
+}
+
+.sidebar-rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: var(--rail-w);
+  padding: 18px 0 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.sidebar-rail .icon-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.sidebar-rail .icon-button.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sidebar-rail-avatar {
+  margin-top: auto;
+  padding: 0;
+  border: none;
+}
+
+.sidebar-rail-avatar:hover {
+  background: var(--brand-gradient);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.sidebar.is-collapsed {
+  width: var(--rail-w);
+}
+
+.sidebar.is-collapsed .sidebar-full {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sidebar.is-collapsed .sidebar-rail {
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: 0.08s;
+}
+
+.sidebar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.sidebar-collapse {
+  flex: none;
+  border-radius: 8px;
 }
 
 .sidebar-brand {
@@ -1008,17 +504,35 @@ input[type='radio'] {
   display: none;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1400px) and (min-width: 1101px) {
+  .sidebar {
+    --sidebar-w: 208px;
+  }
+
+  .brand-name {
+    font-size: 15px;
+    white-space: nowrap;
+  }
+}
+
+/* Below this the sidebar folds into the top bar's menu button, leaving room for the tables. */
+@media (max-width: 1100px) {
   .sidebar {
     position: fixed;
     left: 0;
     top: 0;
     bottom: 0;
     z-index: 60;
-    width: min(260px, 84vw);
+    --sidebar-w: min(260px, 84vw);
     height: auto;
     transform: translateX(-100%);
     transition: transform 0.22s ease;
+  }
+
+  /* Phones use the menu button instead of the collapsed rail. */
+  .sidebar-collapse,
+  .sidebar-rail {
+    display: none;
   }
 
   /* Shadow only while open, or it peeks in at the screen edge. */
@@ -1033,7 +547,7 @@ input[type='radio'] {
 
   .shell-main {
     margin: 0;
-    min-height: 100vh;
+    height: 100dvh;
     border-radius: 0;
     box-shadow: none;
   }
@@ -1063,11 +577,6 @@ input[type='radio'] {
     height: 20px;
   }
 
-  /* Clear the sticky top bar. */
-  .spots-banner {
-    top: 58px;
-  }
-
   .mobile-brand {
     font-weight: 700;
   }
@@ -1078,7 +587,9 @@ input[type='radio'] {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sidebar {
+  .sidebar,
+  .sidebar-full,
+  .sidebar-rail {
     transition: none;
   }
 }
@@ -1187,10 +698,14 @@ a {
   padding: 4px 10px;
 }
 
+.sheet-item {
+  position: relative;
+}
+
 .sheet-link {
   display: flex;
   flex-direction: column;
-  padding: 8px 10px;
+  padding: 8px 32px 8px 10px;
   border-radius: 8px;
   color: var(--text);
   text-decoration: none;
@@ -1225,93 +740,1414 @@ a {
   white-space: nowrap;
 }
 
+.sheet-delete {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  border-radius: 6px;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.sheet-item:hover .sheet-delete,
+.sheet-delete:focus-visible {
+  opacity: 1;
+}
+
+.sheet-delete:hover {
+  color: var(--error);
+  background: var(--hover-wash);
+}
+
+@media (hover: none) {
+  .sheet-delete {
+    opacity: 1;
+  }
+}
+
 .sidebar-mentors {
   grid-column: 1 / -1;
   margin: -4px -6px 4px;
 }
 
-/* Sheet page: check-in beside the tables board */
+/* Sheet page: one screen. Only the check-in list and each table scroll. */
+
+:root {
+  --grp-female: #db2777;
+  --grp-female-soft: #fdf2f8;
+  --grp-male: #2563eb;
+  --grp-male-soft: #eff6ff;
+  --grp-none: #64748b;
+  --grp-none-soft: #f1f5f9;
+  --ok: #16a34a;
+  --warm: #d97706;
+  --ok-soft: #dcfce7;
+  --ok-text: #166534;
+  --warn-soft: #fef3c7;
+  --warn-text: #92400e;
+  --error-soft: rgba(217, 45, 32, 0.09);
+  --waitlist-wash: rgba(245, 158, 11, 0.08);
+  --waitlist-edge: rgba(245, 158, 11, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --grp-female: #f472b6;
+    --grp-female-soft: rgba(236, 72, 153, 0.14);
+    --grp-male: #60a5fa;
+    --grp-male-soft: rgba(59, 130, 246, 0.14);
+    --grp-none: #94a3b8;
+    --grp-none-soft: rgba(148, 163, 184, 0.14);
+    --ok: #4ade80;
+    --warm: #fbbf24;
+    --ok-soft: rgba(34, 197, 94, 0.16);
+    --ok-text: #bbf7d0;
+    --warn-soft: rgba(245, 158, 11, 0.18);
+    --warn-text: #fde68a;
+    --error-soft: rgba(249, 112, 102, 0.14);
+    --waitlist-wash: rgba(245, 158, 11, 0.08);
+    --waitlist-edge: rgba(245, 158, 11, 0.28);
+  }
+}
 
 .shell-main .app {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   max-width: 1600px;
+  overflow-y: auto;
+}
+
+.shell-main .app:has(.sheet-page) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 18px 22px;
+}
+
+.sheet-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .sheet-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px 24px;
-  margin-bottom: 20px;
+  gap: 12px;
+  margin: 0;
 }
 
-.sheet-head-titles {
+.sheet-heading {
+  flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
-.sheet-head-titles h1 {
-  overflow-wrap: anywhere;
+.sheet-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
 }
 
-.sheet-head-titles p {
-  margin-top: 4px;
+.sheet-title a {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  text-decoration: none;
+  text-underline-offset: 4px;
+}
+
+.sheet-title a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* Shows on hover (always on touch screens). */
+.sheet-rename {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.sheet-title:hover .sheet-rename,
+.sheet-rename:focus-visible {
+  opacity: 1;
+}
+
+.sheet-rename:hover {
+  color: var(--accent);
+  background: var(--hover-wash);
+}
+
+@media (hover: none) {
+  .sheet-rename {
+    opacity: 1;
+  }
+}
+
+/* While renaming, the field spans the heading so long names don't scroll out of view. */
+.sheet-title.is-editing {
+  align-self: stretch;
+}
+
+.sheet-title-input {
+  flex: 1;
+  min-width: 0;
+  margin-left: -7px;
+  padding: 0 6px;
+  border: 1px solid var(--accent-fill);
+  border-radius: 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+  outline: none;
+}
+
+.sheet-title-input.has-error {
+  border-color: var(--error);
+}
+
+/* Attendance sync with the Google Sheet: quiet text when fine, a button when it needs a hand. */
+.attendance-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.attendance-chip svg {
+  width: 14px;
+  height: 14px;
+}
+
+.attendance-chip.is-quiet {
+  color: var(--text-muted);
+}
+
+button.attendance-chip.is-alert {
+  height: 36px;
+  padding: 0 12px;
+  color: var(--warn-text);
+  background: var(--warn-soft);
+}
+
+button.attendance-chip.is-alert:hover {
+  filter: brightness(0.96);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.is-syncing svg {
+  animation: spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-syncing svg {
+    animation: none;
+  }
+}
+
+/* Formatting warnings from the last import or re-sync: a quiet count that opens to the list. */
+.warnings-chip {
+  position: relative;
+}
+
+button.attendance-chip.is-warn {
+  height: 36px;
+  padding: 0 10px;
+  color: var(--warn-text);
+  background: none;
+}
+
+button.attendance-chip.is-warn:hover,
+button.attendance-chip.is-warn[aria-expanded='true'] {
+  background: var(--warn-soft);
+}
+
+.warnings-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: min(360px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.warnings-popover ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.warnings-popover p {
+  margin: 10px 0 0;
+  font-size: 13px;
 }
 
 .sheet-head-actions {
+  flex: none;
   display: flex;
-  align-items: flex-end;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
 }
 
-.sheet-head-actions .chip-icon {
-  width: 38px;
-  height: 38px;
+.sheet-head-actions > button,
+.capacity-field input {
+  height: 36px;
 }
 
 .capacity-field {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-muted);
 }
 
 .capacity-field input {
-  width: 96px;
-  padding: 7px 10px;
+  width: 72px;
+  padding: 0 10px;
+  font-weight: 600;
+}
+
+.start-field input {
+  width: auto;
 }
 
 .capacity-field.has-error input {
   border-color: var(--error);
 }
 
-.sheet-notice {
-  padding: 8px 12px;
-  margin-bottom: 16px;
-  border-radius: 8px;
+.sheet-message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+}
+
+/* A short-lived banner floating over the top of the app (re-sync results). */
+.toast-banner {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 6px 6px 6px 16px;
+  border-radius: 10px;
   font-size: 14px;
-  background: var(--accent-soft);
+  font-weight: 600;
+  color: var(--accent-contrast);
+  background: var(--accent-fill);
+  box-shadow: var(--shadow-lift);
+  transform: translateX(-50%);
+  animation: toast-in 160ms ease-out;
+}
+
+.toast-banner .chip-icon {
+  color: inherit;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-banner {
+    animation: none;
+  }
+}
+
+/* Phones only (see the media query below). */
+.sheet-page .panel-switch {
+  display: none;
 }
 
 .sheet-layout {
+  flex: 1;
+  min-height: 0;
   display: grid;
-  grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
-  gap: 32px;
-  align-items: start;
+  /* Wide enough for a name with its nickname, and the status and table chips side by side. */
+  grid-template-columns: clamp(340px, 30vw, 440px) minmax(0, 1fr);
+  gap: 18px;
 }
 
-.sheet-layout .checkin {
-  max-width: none;
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--btn);
 }
 
-.sheet-layout .dg-grid {
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+.segmented button {
+  min-width: 0;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 600;
 }
 
-@media (max-width: 1100px) {
+.segmented button.is-on {
+  background: var(--bg);
+  color: var(--accent);
+  box-shadow: var(--shadow-card);
+}
+
+/* Check-in column */
+
+.checkin {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.checkin-top {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 10px;
+}
+
+.spots-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  color: #14532d;
+  background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+}
+
+.spots-banner.is-full {
+  color: #78350f;
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+}
+
+.spots-banner.is-over {
+  color: #fff;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+
+.spots-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.spots-number {
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.spots-label {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.spots-detail {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.spots-hint {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+/* Until when confirmed people's spots are held, with the early-release button. */
+.spots-reserve {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  padding: 6px 6px 6px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.spots-reserve b {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.spots-release {
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.spots-release:hover {
+  color: inherit;
+  background: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+/* The one waitlisted person to let in now; strict order, so only ever the front of the line. */
+.next-up {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--waitlist-wash);
+  box-shadow: inset 0 0 0 1px var(--waitlist-edge);
+}
+
+.next-up-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.next-up-who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.next-up-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--warn-text);
+}
+
+.checkin-chance {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+
+/* The room, left to right: checked in, held for confirmed, waitlist, open. */
+.spots-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin-top: 2px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.spots-bar span {
+  flex-basis: 0;
+}
+
+:is(.spots-bar span, .spots-swatch).is-in {
+  background: currentColor;
+}
+
+:is(.spots-bar span, .spots-swatch).is-held {
+  background: color-mix(in srgb, currentColor 55%, transparent);
+}
+
+:is(.spots-bar span, .spots-swatch).is-waitlist {
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, currentColor 45%, transparent) 0 3px, transparent 3px 6px);
+}
+
+:is(.spots-bar span, .spots-swatch).is-open {
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+
+.spots-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.spots-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.spots-legend b {
+  font-weight: 800;
+}
+
+.spots-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .spots-banner {
+    color: #dcfce7;
+    background: linear-gradient(135deg, #14532d, #166534);
+  }
+
+  .spots-banner.is-full {
+    color: #fef3c7;
+    background: linear-gradient(135deg, #78350f, #92400e);
+  }
+}
+
+/* Where the last person checked in should sit; always three lines so the card never changes size. */
+.seat-card {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  color: #fff;
+  background: var(--brand-gradient);
+  box-shadow: 0 6px 18px rgba(90, 92, 250, 0.22);
+}
+
+.seat-card.is-unseated,
+.seat-card.is-empty {
+  color: var(--text-muted);
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+.seat-card.is-empty {
+  border-style: dashed;
+}
+
+.seat-card-who,
+.seat-card-mentor {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seat-card-who {
+  opacity: 0.9;
+}
+
+.seat-card-table {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 38px;
+  letter-spacing: -0.02em;
+}
+
+.checkin-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-muted);
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.checkin-search:focus-within {
+  border-color: var(--accent-fill);
+  background: var(--bg);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.checkin-search input,
+.checkin-search input:focus {
+  border: none;
+  padding: 9px 0;
+  font-size: 15px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.checkin-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  /* Room for the scrollbar, so it never sits over the buttons (macOS overlays it otherwise). */
+  padding: 0 6px 0 0;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.checkin-list li {
+  padding: 6px 8px;
+  border-radius: 10px;
+  transition: background 0.12s;
+}
+
+.checkin-list li + li {
+  margin-top: 1px;
+}
+
+.checkin-list li:hover {
+  background: var(--hover-wash);
+}
+
+.checkin-list li.is-asking {
+  padding: 10px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.checkin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.checkin-person {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.checkin-name {
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.checkin-nickname {
+  margin-left: 6px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.checkin-list li.is-in .checkin-name {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.checkin-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.checkin-table,
+.checkin-status,
+.checkin-flag {
+  align-self: flex-start;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.checkin-table {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.checkin-flag {
+  color: var(--warn-text);
+  background: var(--warn-soft);
+}
+
+/* Contact status colors, matching ISMP Operations. */
+.status-not_contacted { background: #f1f5f9; color: #334155; }
+.status-waiting_to_contact { background: #dbeafe; color: #1e40af; }
+.status-awaiting_response { background: #fef3c7; color: #92400e; }
+.status-confirmed { background: #dcfce7; color: #166534; }
+.status-no_response { background: #e5e7eb; color: #4b5563; }
+.status-not_coming,
+.status-no_room,
+.status-not_inviting { background: #fee2e2; color: #991b1b; }
+
+@media (prefers-color-scheme: dark) {
+  .status-not_contacted { background: #273244; color: #cbd5e1; }
+  .status-waiting_to_contact { background: #1e3a5f; color: #bfdbfe; }
+  .status-awaiting_response { background: #78350f; color: #fde68a; }
+  .status-confirmed { background: #14532d; color: #bbf7d0; }
+  .status-no_response { background: #374151; color: #d1d5db; }
+  .status-not_coming,
+  .status-no_room,
+  .status-not_inviting { background: #7f1d1d; color: #fecaca; }
+}
+
+.checkin-list button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 98px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.checkin-done {
+  color: var(--ok-text);
+  background: var(--ok-soft);
+}
+
+.checkin-done:hover {
+  color: var(--error);
+  background: var(--hover-wash);
+}
+
+.checkin-done svg,
+.checkin-waitlisted svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Waitlist is the action (solid amber), Waitlisted the state (soft amber), like Check in and Checked in. */
+.checkin-waitlist {
+  color: #422006;
+  background: #f59e0b;
+}
+
+.checkin-waitlist:hover {
+  color: #422006;
+  background: #d97706;
+}
+
+.checkin-waitlisted {
+  color: var(--warn-text);
+  background: var(--warn-soft);
+}
+
+.checkin-waitlisted:hover {
+  color: var(--error);
+  background: var(--hover-wash);
+}
+
+.checkin-list .checkin-noroom:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  color: var(--error);
+  background: var(--error-soft);
+}
+
+.checkin-tabs {
+  display: flex;
+}
+
+.checkin-tabs button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+}
+
+.checkin-tabs button:last-child.is-on {
+  color: var(--warn-text);
+}
+
+.tab-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+  background: var(--hover-wash);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The waitlist reads as a holding area, not the main list: amber-tinted, numbered in order. */
+.checkin-list.is-waitlist {
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--waitlist-wash);
+  box-shadow: inset 0 0 0 1px var(--waitlist-edge);
+}
+
+.checkin-list.is-waitlist li:hover {
+  background: var(--waitlist-wash);
+}
+
+.waitlist-place {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 24px;
+  text-align: center;
+  color: #422006;
+  background: #fbbf24;
+}
+
+.checkin-list.is-waitlist .checkin-person {
+  flex: 1;
+}
+
+.waitlist-note {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--warn-text);
+}
+
+.checkin-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.checkin-ask .segmented button {
+  min-width: 0;
+  height: auto;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.checkin-empty {
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.checkin-list li.checkin-empty:hover {
+  background: none;
+}
+
+/* Tables column */
+
+.dg {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dg-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dg-controls > button,
+.dg-plan > button {
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+}
+
+.dg-plan {
+  flex: none;
+  display: inline-flex;
+}
+
+.dg-controls > button:not(.primary) {
+  background: transparent;
+  border-color: var(--border);
+}
+
+.dg-controls > button:not(.primary):hover {
+  background: var(--hover-wash);
+}
+
+.dg-tray {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.dg-label {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.dg-tray .dg-chips {
+  flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.dg-away {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 40%;
+  min-width: 0;
+  padding-left: 6px;
+}
+
+.dg-away .dg-chips {
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+/* A mentor left out of this event; clicking puts them back. */
+.away-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 6px 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.away-chip svg {
+  width: 13px;
+  height: 13px;
+}
+
+.away-chip:hover {
+  color: var(--accent);
+  border-color: var(--accent-fill);
+  background: var(--accent-soft);
+}
+
+.dg-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.dg-empty-board {
+  grid-column: 1 / -1;
+  align-self: center;
+  text-align: center;
+}
+
+.dg-table {
+  --grp: var(--grp-none);
+  --grp-soft: var(--grp-none-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 8px 8px 10px;
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--grp);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.dg-table.is-female {
+  --grp: var(--grp-female);
+  --grp-soft: var(--grp-female-soft);
+}
+
+.dg-table.is-male {
+  --grp: var(--grp-male);
+  --grp-soft: var(--grp-male-soft);
+}
+
+.dg-table.has-warning {
+  border-color: var(--warm);
+  border-top-color: var(--grp);
+}
+
+.dg-tray.is-drop-target,
+.dg-table.is-drop-target {
+  border-color: var(--accent-fill);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.dg-table-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dg-table-head h4 {
+  flex: none;
+  margin: 0 auto 0 0;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.dg-group {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 100px;
+  height: 22px;
+  padding: 0 20px 0 8px;
+  border: none;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--grp);
+  background: var(--grp-soft)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    no-repeat right 7px center;
+  appearance: none;
+  cursor: pointer;
+}
+
+.dg-group:hover {
+  border: none;
+  filter: brightness(0.97);
+}
+
+.dg-table-head .dg-remove {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+
+.dg-table-head .dg-remove:hover {
+  color: var(--error);
+}
+
+/* Delete shows on hover (always on touch screens) so the header fits narrow tables. */
+.dg-table:not(:hover):not(:focus-within) .dg-remove {
+  display: none;
+}
+
+@media (hover: none) {
+  .dg-table .dg-remove {
+    display: inline-flex;
+  }
+}
+
+.dg-fill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dg-fill-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--btn);
+  overflow: hidden;
+}
+
+.dg-fill-bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ok);
+  transition: width 0.25s ease;
+}
+
+.dg-fill.is-warm .dg-fill-bar {
+  background: var(--warm);
+}
+
+.dg-fill.is-over .dg-fill-bar {
+  background: var(--error);
+}
+
+.dg-fill-count {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dg-fill.is-over .dg-fill-count {
+  color: var(--error);
+}
+
+.dg-warning {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--warm);
+}
+
+.dg-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dg-table .dg-chips {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.dg-chips.is-row {
+  flex-direction: row;
+  gap: 6px;
+}
+
+.person-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 32px;
+  padding: 3px 5px 3px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: grab;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.person-chip:hover {
+  border-color: var(--input-border);
+}
+
+.person-chip:active {
+  cursor: grabbing;
+}
+
+.person-chip.is-mentor {
+  background: var(--grp-soft, var(--accent-soft));
+  box-shadow: inset 3px 0 0 var(--grp, var(--accent-fill));
+}
+
+.person-chip.is-gone {
+  background: transparent;
+  border: 1px dashed var(--input-border);
+  opacity: 0.75;
+}
+
+.dg-tray .person-chip {
+  flex: none;
+}
+
+.person-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.person-name {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.person-chip.is-mentor .person-name {
+  font-weight: 700;
+}
+
+.person-nick {
+  color: var(--text-muted);
+}
+
+.person-tags {
+  flex: none;
+  display: inline-flex;
+  gap: 3px;
+}
+
+.person-tag {
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  color: var(--text-muted);
+  background: var(--btn);
+}
+
+.person-tag.is-off {
+  color: var(--warn-text);
+  background: var(--warn-soft);
+}
+
+/* Chip controls take no room until hovered or focused; a lock that's on always shows. */
+.person-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.person-chip:not(:hover):not(:focus-within) .person-actions > :not(.is-on) {
+  display: none;
+}
+
+.chip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+}
+
+.chip-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.chip-icon.is-on {
+  color: var(--accent);
+}
+
+.person-chip .chip-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.person-chip .chip-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.chip-text {
+  padding: 0 4px;
+  font-size: 12px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.chip-text:hover {
+  background: none;
+  color: var(--error);
+}
+
+@media (max-width: 900px) {
+  .shell-main .app:has(.sheet-page) {
+    padding: 12px;
+  }
+
+  .sheet-title {
+    font-size: 19px;
+  }
+
+  .capacity-field span {
+    display: none;
+  }
+
+  .attendance-chip.is-quiet {
+    display: none;
+  }
+
+  .sheet-page .panel-switch {
+    display: inline-flex;
+    align-self: stretch;
+  }
+
+  .panel-switch button {
+    flex: 1;
+  }
+
   .sheet-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sheet-page.shows-checkin .dg,
+  .sheet-page.shows-tables .checkin {
+    display: none;
+  }
+
+  .dg-controls {
+    flex-wrap: wrap;
+  }
+
+  .dg-tray,
+  .dg-away {
+    flex-basis: 100%;
+    max-width: none;
+  }
+
+  .dg-grid {
+    padding: 6px;
+    gap: 6px;
   }
 }
 
@@ -1333,8 +2169,56 @@ a {
   flex-direction: column;
 }
 
-.import-dialog::backdrop {
+.import-dialog::backdrop,
+.confirm-dialog::backdrop {
   background: rgba(14, 19, 24, 0.45);
+}
+
+/* Confirm dialog (in place of window.confirm) */
+
+.confirm-dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 0;
+  border: none;
+  border-radius: 16px;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow-lift);
+}
+
+.confirm-dialog[open] {
+  animation: dialog-in 140ms ease-out;
+}
+
+.confirm-body {
+  padding: 20px 20px 16px;
+}
+
+.confirm-body h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.confirm-message {
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+.confirm-dialog .dialog-foot {
+  padding: 12px 20px;
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-dialog[open] {
+    animation: none;
+  }
 }
 
 .dialog-head,
@@ -1408,102 +2292,6 @@ a {
   background: var(--accent-soft);
 }
 
-.import-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.header-row-field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.header-row-field input {
-  width: 80px;
-  padding: 6px 8px;
-}
-
-.field-map {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px 14px;
-  margin: 0;
-  padding: 12px 14px 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-}
-
-.field-map legend {
-  padding: 0 4px;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.field-map label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.field-map select {
-  padding: 6px 8px;
-  font-size: 14px;
-}
-
-.import-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.import-summary .dg-notice {
-  margin: 0;
-}
-
-.preview-table-wrap {
-  overflow-x: auto;
-}
-
-.preview-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-
-.preview-table caption {
-  text-align: left;
-  padding-bottom: 6px;
-}
-
-.preview-table th,
-.preview-table td {
-  padding: 6px 8px;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-}
-
-.preview-table th {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.ignored-columns summary {
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.ignored-columns p {
-  margin-top: 6px;
-}
-
 /* Mentors */
 
 .mentors {
@@ -1564,3 +2352,6 @@ a {
   height: 16px;
   flex: none;
 }
+
+
+

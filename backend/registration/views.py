@@ -170,7 +170,7 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
 
     def update(self, request, *args, **kwargs):
         if not kwargs.get('partial'):
-            raise drf_serializers.ValidationError('Use PATCH to change the capacity.')
+            raise drf_serializers.ValidationError('Use PATCH to change the name, capacity, or start time.')
         return super().update(request, *args, **kwargs)
 
     def create(self, request):
@@ -180,7 +180,7 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
         with transaction.atomic():
             sheet = models.SignupSheet.objects.create(
                 chapter=self.chapter(), imported_by=request.user,
-                **{k: data[k] for k in ('spreadsheet_id', 'spreadsheet_title', 'tab_id', 'tab_title', 'field_map')},
+                **{k: data[k] for k in ('spreadsheet_id', 'spreadsheet_title', 'tab_id', 'tab_title', 'field_map', 'warnings')},
             )
             replace_rows(sheet, data['rows'])
             models.SeatingPlan.objects.create(sheet=sheet)
@@ -197,7 +197,7 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
             self._locked_plan(sheet)
             counts = replace_rows(sheet, data['rows'])
             sheet.spreadsheet_title, sheet.tab_title = data['spreadsheet_title'], data['tab_title']
-            sheet.field_map = data['field_map']
+            sheet.field_map, sheet.warnings = data['field_map'], data['warnings']
             sheet.synced_at = timezone.now()
             sheet.save()
         return Response({'sheet': self.get_serializer(self.get_queryset().get(pk=sheet.pk)).data, **counts})
@@ -219,13 +219,14 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
             plan = self._locked_plan(sheet)
             students, mentors = seating.attendees(sheet)
             excluded = payload.validated_data['excluded_mentor_ids']
-            tables = seating.keep_new_check_ins(
+            # Checked before check-in seats are put back, so a check-in the organizer never saw can't fail the save.
+            tables = seating.clean_tables(
                 [dict(t, members=[dict(m) for m in t['members']]) for t in payload.validated_data['tables']],
-                plan.tables,
-                sheet.signups.all(),
-                payload.validated_data.get('updated_at'),
+                students, mentors, excluded, plan.tables,
             )
-            plan.tables = seating.clean_tables(tables, students, mentors, excluded)
+            plan.tables = seating.keep_new_check_ins(
+                tables, plan.tables, sheet.signups.all(), payload.validated_data.get('updated_at'),
+            )
             plan.save()
             plan.excluded_mentors.set(excluded)
         return Response(seating.plan_payload(plan))
@@ -235,6 +236,9 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
         sheet = self.get_object()
         with transaction.atomic():
             plan = self._locked_plan(sheet)
+            # Once people are arriving, re-planning would move mentors away from students already told their table.
+            if plan.tables and sheet.signups.filter(checked_in_at__isnull=False).exists():
+                raise drf_serializers.ValidationError('Check-in has started, so the tables can’t be re-planned.')
             students, mentors = seating.attendees(sheet)
             excluded = set(plan.excluded_mentors.values_list('id', flat=True))
             plan.tables = seating.generate(students, [m for m in mentors if m['id'] not in excluded], plan.tables)
@@ -263,6 +267,25 @@ class SignupViewSet(ChapterScoped, viewsets.GenericViewSet):
             signup.save()
             table = seating.seat_at_check_in(signup)
         return Response({'student': seating.student_of(signup), 'table': table})
+
+    # Who gets waitlisted is up to the door volunteer; the UI works it out from capacity and confirmations.
+    # It never touches the Google Sheet.
+    @action(detail=True, methods=['post'])
+    def waitlist(self, request, pk=None):
+        signup = self.get_object()
+        if signup.checked_in_at is not None:
+            raise drf_serializers.ValidationError('They’re already checked in.')
+        if signup.waitlisted_at is None:
+            signup.waitlisted_at = timezone.now()
+            signup.save(update_fields=['waitlisted_at'])
+        return Response({'student': seating.student_of(signup)})
+
+    @action(detail=True, methods=['post'], url_path='undo-waitlist')
+    def undo_waitlist(self, request, pk=None):
+        signup = self.get_object()
+        signup.waitlisted_at = None
+        signup.save(update_fields=['waitlisted_at'])
+        return Response({'student': seating.student_of(signup)})
 
     @action(detail=True, methods=['post'], url_path='undo-check-in')
     def undo_check_in(self, request, pk=None):

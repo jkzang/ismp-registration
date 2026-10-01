@@ -1,90 +1,89 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { api, errorMessage } from '../api'
 import {
-  CONTACT_STATUSES,
   type Gender,
-  type Level,
+  type TableLevel,
   type PlanMentor,
   type PlanStudent,
   type SeatingPlan,
   type SeatingTable,
   type TableMember,
 } from '../types'
+import { useUndo } from '../undo'
+import { ConfirmDialog } from './ConfirmDialog'
 import { LockIcon, PlusIcon, ShuffleIcon, TrashIcon, UnlockIcon } from './icons'
 
-// Matches check-in: 3 students per mentor is comfortable, 4 is fine, more only when there's no choice.
+// 3 students per mentor is comfortable, 4 is fine. A table seats 8 at most: 2 mentors and 6 students.
 const IDEAL_PER_MENTOR = 3
 const MAX_PER_MENTOR = 4
+const MAX_STUDENTS = 6
+const MAX_MENTORS = 2
 const UNASSIGNED = 'unassigned'
 
 type Key = `${TableMember['kind']}:${number}`
 const keyOf = (m: { kind: TableMember['kind']; id: number }): Key => `${m.kind}:${m.id}`
 
-const GENDER_LABEL: Record<Gender, string> = { female: 'Girls', male: 'Guys' }
-const LEVEL_LABEL: Record<Level, string> = { undergrad: 'Undergrad', grad: 'Grad' }
-
 const GROUP_OPTIONS: { value: string; label: string }[] = [
-  { value: 'female:undergrad', label: 'Girls · Undergrad' },
-  { value: 'female:grad', label: 'Girls · Grad' },
-  { value: 'female:', label: 'Girls · Either level' },
-  { value: 'male:undergrad', label: 'Guys · Undergrad' },
-  { value: 'male:grad', label: 'Guys · Grad' },
-  { value: 'male:', label: 'Guys · Either level' },
-  { value: ':', label: 'No group (check-in skips it)' },
+  { value: 'female:undergrad', label: 'Girls UG' },
+  { value: 'female:grad', label: 'Girls Grad' },
+  { value: 'female:', label: 'Girls Any' },
+  { value: 'male:undergrad', label: 'Guys UG' },
+  { value: 'male:grad', label: 'Guys Grad' },
+  { value: 'male:', label: 'Guys Any' },
+  { value: ':', label: 'No group' },
 ]
+
+/** Why a table can't take one more of this kind, or null if it can. */
+function fullReason(table: SeatingTable, kind: TableMember['kind']): string | null {
+  const count = table.members.filter((m) => m.kind === kind).length
+  if (kind === 'student' && count >= MAX_STUDENTS) return `${table.name} already has ${MAX_STUDENTS} students`
+  if (kind === 'mentor' && count >= MAX_MENTORS) return `${table.name} already has ${MAX_MENTORS} mentors`
+  return null
+}
 
 function newTableId() {
   return Math.random().toString(36).slice(2, 10)
 }
 
-type Warning = { text: string; serious: boolean }
-
-/** Serious warnings break the separation rules; the rest are just things to double-check. */
-function tableWarnings(table: SeatingTable, students: PlanStudent[], mentors: PlanMentor[]): Warning[] {
-  const warnings: Warning[] = []
+/** Only what breaks the separation rules. */
+function tableWarnings(table: SeatingTable, students: PlanStudent[], mentors: PlanMentor[]): string[] {
+  const warnings: string[] = []
   const genders = new Set([table.gender, ...students.map((s) => s.gender)].filter(Boolean))
-  const levels = new Set(students.map((s) => s.level).filter(Boolean))
-  if (genders.size > 1) warnings.push({ text: 'Guys and girls mixed', serious: true })
-  if (levels.size > 1) warnings.push({ text: 'Undergrad and grad mixed', serious: true })
-  if (mentors.length === 0 && (students.length > 0 || table.gender)) warnings.push({ text: 'No mentor', serious: true })
+  const levels = new Set(students.map((s) => s.level).filter((l) => l === 'undergrad' || l === 'grad'))
+  if (genders.size > 1) warnings.push('Guys and girls mixed')
+  if (levels.size > 1) warnings.push('Undergrad and grad mixed')
+  if (mentors.length === 0 && students.length > 0) warnings.push('No mentor')
   const gender = genders.size === 1 ? [...genders][0] : null
-  if (mentors.some((m) => m.gender && (genders.size > 1 || (gender && m.gender !== gender)))) {
-    warnings.push({ text: "Mentor gender doesn't match", serious: true })
-  }
-  if (mentors.length > 0 && students.length / mentors.length > MAX_PER_MENTOR) {
-    warnings.push({ text: `More than ${MAX_PER_MENTOR} per mentor`, serious: false })
-  }
-  if (!table.gender) warnings.push({ text: 'No group, so check-in won’t seat anyone here', serious: false })
+  if (mentors.some((m) => genders.size > 1 || (gender && m.gender !== gender))) warnings.push('Mentor gender mismatch')
   return warnings
 }
 
-function Tag({ children, title }: { children: React.ReactNode; title: string }) {
+function Tag({ children, title, off = false }: { children: React.ReactNode; title: string; off?: boolean }) {
   return (
-    <span className="person-tag" title={title}>
+    <span className={`person-tag${off ? ' is-off' : ''}`} title={title}>
       {children}
     </span>
   )
 }
 
-function PersonChip({ member, student, mentor, tables, where, onMove, onToggleLock, onNotComing }: {
+function PersonChip({ member, student, mentor, table, onToggleLock, onNotComing }: {
   member: TableMember
   student?: PlanStudent
   mentor?: PlanMentor
-  tables: SeatingTable[]
-  where: string
-  onMove: (target: string) => void
+  /** The table they sit at; tags that don't match its group are highlighted. */
+  table?: SeatingTable
   onToggleLock?: () => void
   onNotComing?: () => void
 }) {
   const person = student ?? mentor!
   const gender = person.gender === 'female' ? 'F' : person.gender === 'male' ? 'M' : '?'
-  const genderTitle = person.gender ? `Gender: ${person.gender}` : 'Gender not on file'
-  const status = student ? CONTACT_STATUSES.find((s) => s.value === student.status)?.label : null
+  const level = student?.level === 'grad' ? 'G' : student?.level === 'undergrad' ? 'UG' : student?.level === 'other' ? 'Other' : '?'
 
   return (
     <li
       className={`person-chip${mentor ? ' is-mentor' : ''}${student && !student.checked_in ? ' is-gone' : ''}`}
+      title={mentor ? `${person.name} (mentor)` : student && !student.checked_in ? `${person.name} (not here yet)` : person.name}
       draggable
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', keyOf(member))
@@ -97,14 +96,17 @@ function PersonChip({ member, student, mentor, tables, where, onMove, onToggleLo
           {student?.nickname && <span className="person-nick"> ({student.nickname})</span>}
         </span>
         <span className="person-tags">
-          {mentor && <Tag title="Mentor">Mentor</Tag>}
-          <Tag title={genderTitle}>{gender}</Tag>
+          <Tag title={person.gender || 'Gender unknown'} off={!!table?.gender && person.gender !== table.gender}>
+            {gender}
+          </Tag>
           {student && (
-            <Tag title={student.level ? `Level: ${student.level}` : 'Level unknown'}>
-              {student.level === 'grad' ? 'G' : student.level === 'undergrad' ? 'UG' : '?'}
+            <Tag
+              title={student.level === 'other' ? 'Not a student' : student.level || 'Level unknown'}
+              off={!!table?.level && student.level !== table.level}
+            >
+              {level}
             </Tag>
           )}
-          {student && !student.checked_in && <Tag title={`Sign-up status: ${status}`}>Not here yet</Tag>}
         </span>
       </span>
       <span className="person-actions">
@@ -120,23 +122,9 @@ function PersonChip({ member, student, mentor, tables, where, onMove, onToggleLo
             {member.locked ? <LockIcon /> : <UnlockIcon />}
           </button>
         )}
-        <select
-          className="chip-move"
-          value={where}
-          onChange={(e) => onMove(e.target.value)}
-          aria-label={`Move ${person.name}`}
-          title="Move to another table"
-        >
-          {tables.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-          <option value={UNASSIGNED}>Not seated</option>
-        </select>
         {onNotComing && (
-          <button type="button" className="chip-text" onClick={onNotComing} title="Leave out of this sheet's tables">
-            Not coming
+          <button type="button" className="chip-text" onClick={onNotComing} title="Mark absent: leave out of this sheet's tables">
+            Absent
           </button>
         )}
       </span>
@@ -175,17 +163,19 @@ function DropZone({ id, dragOver, setDragOver, onDropKey, className, children }:
   )
 }
 
-function percent(rate: number) {
-  return `${Math.round(rate * 100)}%`
-}
-
-/** The show-up rates behind "expected". */
-function RatesNote({ plan }: { plan: SeatingPlan }) {
-  const parts = CONTACT_STATUSES.flatMap(({ value, label }) => {
-    const rate = plan.show_up_rates[value]
-    return rate === undefined ? [] : [`${label} ${percent(rate)}`]
-  })
-  return <p className="muted dg-help">Show-up rates used for “expected”: {parts.join(' · ')}.</p>
+/** Four tables per row (two on phones), rows sharing the height so each table has room to grow. */
+function useTableGrid(count: number) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  const cols = width && width < 560 ? 2 : 4
+  return { ref, cols, rows: Math.max(1, Math.ceil(count / cols)) }
 }
 
 export function TablesBoard({ sheetId, plan, setPlan }: {
@@ -195,7 +185,13 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
 }) {
   const [error, setError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [confirmingReplan, setConfirmingReplan] = useState(false)
+  const [removing, setRemoving] = useState<SeatingTable | null>(null)
+  const { push } = useUndo()
   const [dragOver, setDragOver] = useState<string | null>(null)
+  // While someone is dragged, the not-seated area shows even when empty so they can be dropped there.
+  const [dragging, setDragging] = useState(false)
+  const grid = useTableGrid(plan.tables.length)
 
   const studentsById = new Map(plan.students.map((s) => [s.id, s]))
   const mentorsById = new Map(plan.mentors.map((m) => [m.id, m]))
@@ -205,20 +201,32 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
 
   const attendingMentors = plan.mentors.filter((m) => !excluded.has(m.id))
   const asMember = (kind: TableMember['kind'], id: number): TableMember => ({ kind, id, locked: false })
-  const arrivedUnseated = [
-    ...plan.students.filter((s) => s.checked_in && !seated.has(`student:${s.id}`)).map((s) => asMember('student', s.id)),
-    ...attendingMentors.filter((m) => !seated.has(`mentor:${m.id}`)).map((m) => asMember('mentor', m.id)),
-  ]
-  const notHereYet = plan.students.filter((s) => !s.checked_in && !seated.has(`student:${s.id}`))
-  const checkedIn = plan.students.filter((s) => s.checked_in).length
-  const expectedTotal = plan.expected.reduce((sum, e) => sum + e.count, 0)
-  const studentsWithoutGender = plan.students.filter((s) => !s.gender && !s.checked_in).length
+  // Re-planning would move mentors away from students already told their table. The first plan
+  // is still allowed, in case check-in began before anyone planned.
+  const checkInStarted = plan.tables.length > 0 && plan.students.some((s) => s.checked_in)
+  const unseatedMentors = attendingMentors.filter((m) => !seated.has(`mentor:${m.id}`)).map((m) => asMember('mentor', m.id))
+  const unseatedStudents = plan.students
+    .filter((s) => s.checked_in && !seated.has(`student:${s.id}`))
+    .map((s) => asMember('student', s.id))
 
-  async function save(tables: SeatingTable[], excludedIds: number[]) {
+  // Undo and redo put the whole board back as it was at that step. Its time tells the server which
+  // check-ins came after, so seats handed out since then are kept.
+  const restore = (previous: SeatingPlan) => async () =>
+    setPlan(await api.savePlan(sheetId, previous.tables, previous.excluded_mentor_ids, previous.updated_at))
+
+  const nameOf = (key: Key) => {
+    const [kind, id] = key.split(':')
+    return (kind === 'mentor' ? mentorsById : studentsById).get(Number(id))?.name ?? 'someone'
+  }
+
+  /** `label` finishes "Undid …" and "Redid …". */
+  async function save(tables: SeatingTable[], excludedIds: number[], label: string) {
     const previous = plan
     setPlan({ ...previous, tables, excluded_mentor_ids: excludedIds })
     try {
-      setPlan(await api.savePlan(sheetId, tables, excludedIds, previous.updated_at))
+      const next = await api.savePlan(sheetId, tables, excludedIds, previous.updated_at)
+      setPlan(next)
+      push({ label, undo: restore(previous), redo: restore(next) })
       setError(null)
     } catch (err) {
       setPlan(previous)
@@ -234,11 +242,13 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
   function move(key: Key, target: string) {
     if (seated.get(key) === target || (!seated.has(key) && target === UNASSIGNED)) return
     const [kind, id] = key.split(':') as [TableMember['kind'], string]
+    const full = target === UNASSIGNED ? null : fullReason(plan.tables.find((t) => t.id === target)!, kind)
+    if (full) return setError(full)
     let tables = withoutPerson(plan.tables, key)
     if (target !== UNASSIGNED) {
       tables = tables.map((t) => (t.id === target ? { ...t, members: [...t.members, { kind, id: Number(id), locked: true }] } : t))
     }
-    save(tables, plan.excluded_mentor_ids)
+    save(tables, plan.excluded_mentor_ids, `moving ${nameOf(key)}`)
   }
 
   function toggleLock(tableId: string, key: Key) {
@@ -247,38 +257,44 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
         t.id === tableId ? { ...t, members: t.members.map((m) => (keyOf(m) === key ? { ...m, locked: !m.locked } : m)) } : t,
       ),
       plan.excluded_mentor_ids,
+      `the lock on ${nameOf(key)}`,
     )
   }
 
   function setGroup(tableId: string, group: string) {
-    const [gender, level] = group.split(':') as [Gender | '', Level | '']
-    save(plan.tables.map((t) => (t.id === tableId ? { ...t, gender, level } : t)), plan.excluded_mentor_ids)
+    const [gender, level] = group.split(':') as [Gender | '', TableLevel | '']
+    const table = plan.tables.find((t) => t.id === tableId)!
+    save(plan.tables.map((t) => (t.id === tableId ? { ...t, gender, level } : t)), plan.excluded_mentor_ids, `${table.name}’s group change`)
   }
 
   function markNotComing(mentorId: number) {
-    save(withoutPerson(plan.tables, `mentor:${mentorId}`), [...plan.excluded_mentor_ids, mentorId])
+    save(withoutPerson(plan.tables, `mentor:${mentorId}`), [...plan.excluded_mentor_ids, mentorId], `marking ${nameOf(`mentor:${mentorId}`)} absent`)
   }
 
   function restoreMentor(mentorId: number) {
-    save(plan.tables, plan.excluded_mentor_ids.filter((id) => id !== mentorId))
+    save(plan.tables, plan.excluded_mentor_ids.filter((id) => id !== mentorId), `putting ${nameOf(`mentor:${mentorId}`)} back`)
   }
 
   function addTable() {
     const table: SeatingTable = { id: newTableId(), name: `Table ${plan.tables.length + 1}`, gender: '', level: '', members: [] }
-    save([...plan.tables, table], plan.excluded_mentor_ids)
+    save([...plan.tables, table], plan.excluded_mentor_ids, `adding ${table.name}`)
   }
 
   function removeTable(tableId: string) {
+    setRemoving(null)
     const table = plan.tables.find((t) => t.id === tableId)!
-    if (table.members.length > 0 && !window.confirm(`Remove ${table.name}? Its ${table.members.length} people go back to "Not seated".`)) return
-    save(plan.tables.filter((t) => t.id !== tableId), plan.excluded_mentor_ids)
+    save(plan.tables.filter((t) => t.id !== tableId), plan.excluded_mentor_ids, `removing ${table.name}`)
   }
 
   async function generate() {
-    if (plan.tables.length > 0 && !window.confirm('Re-plan the tables? Checked-in and locked people keep their table; everyone else is rearranged.')) return
+    setConfirmingReplan(false)
     setGenerating(true)
+    const previous = plan
     try {
-      setPlan(await api.generatePlan(sheetId))
+      const next = await api.generatePlan(sheetId)
+      setPlan(next)
+      // Redo brings back this plan, not a fresh random one.
+      push({ label: 'the re-plan', undo: restore(previous), redo: restore(next) })
       setError(null)
     } catch (err) {
       setError(errorMessage(err, 'Could not plan the tables'))
@@ -287,107 +303,116 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
     }
   }
 
-  const chipFor = (member: TableMember, where: string, tableId?: string) => (
+  const chipFor = (member: TableMember, tableId?: string) => (
     <PersonChip
       key={keyOf(member)}
       member={member}
+      table={tableId ? plan.tables.find((t) => t.id === tableId) : undefined}
       student={member.kind === 'student' ? studentsById.get(member.id) : undefined}
       mentor={member.kind === 'mentor' ? mentorsById.get(member.id) : undefined}
-      tables={plan.tables}
-      where={where}
-      onMove={(target) => move(keyOf(member), target)}
       onToggleLock={tableId ? () => toggleLock(tableId, keyOf(member)) : undefined}
       onNotComing={member.kind === 'mentor' ? () => markNotComing(member.id) : undefined}
     />
   )
 
   return (
-    <section className="dg" aria-label="Tables">
+    <section className="dg" aria-label="Tables" onDragStart={() => setDragging(true)} onDragEnd={() => setDragging(false)}>
+      <ConfirmDialog
+        open={confirmingReplan}
+        title="Re-plan the tables?"
+        confirmLabel="Re-plan"
+        onConfirm={generate}
+        onClose={() => setConfirmingReplan(false)}
+      >
+        Checked-in and locked people keep their table. Everyone else is rearranged.
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={removing !== null}
+        title={`Remove ${removing?.name ?? 'table'}?`}
+        confirmLabel="Remove table"
+        danger
+        onConfirm={() => removing && removeTable(removing.id)}
+        onClose={() => setRemoving(null)}
+      >
+        Its {removing?.members.length} people become unseated.
+      </ConfirmDialog>
       <div className="dg-controls">
-        <button type="button" className="primary with-icon" onClick={generate} disabled={generating}>
-          <ShuffleIcon /> {generating ? 'Planning…' : plan.tables.length > 0 ? 'Re-plan tables' : 'Plan tables'}
-        </button>
-        <span className="muted dg-summary">
-          {checkedIn} checked in · about {Math.round(expectedTotal)} expected · {attendingMentors.length} mentors
+        {/* The span carries the tooltip, since a disabled button doesn't get hover events. */}
+        <span className="dg-plan" title={checkInStarted ? 'Check-in has started, so the tables are set. Move people by dragging.' : undefined}>
+          <button
+            type="button"
+            className="primary with-icon"
+            onClick={() => (plan.tables.length > 0 ? setConfirmingReplan(true) : generate())}
+            disabled={generating || checkInStarted}
+          >
+            <ShuffleIcon /> {generating ? 'Planning…' : plan.tables.length > 0 ? 'Re-plan' : 'Plan tables'}
+          </button>
         </span>
-      </div>
-      <ul className="dg-expected" aria-label="Expected students by group">
-        {plan.expected.map((e) => (
-          <li key={`${e.gender}:${e.level}`}>
-            <span className="muted">
-              {GENDER_LABEL[e.gender]} · {LEVEL_LABEL[e.level]}
-            </span>{' '}
-            <strong>~{e.count}</strong>
-          </li>
-        ))}
-      </ul>
-      <p className="muted dg-help">
-        Tables are planned from expected turnout for about 6 students and 2 mentors each, and each gets a group. Check-in
-        fills one table of the student’s group to 3 per mentor before starting the next, then tops tables up to 4 per
-        mentor. Levels stay apart unless a level has no table. Drag people or use their Move menu; anyone you
-        move is locked, so check-in and Re-plan leave them there.
-      </p>
-      <RatesNote plan={plan} />
-
-      {error && <p className="error">{error}</p>}
-      {plan.mentors.length === 0 && (
-        <p className="dg-notice">
-          No mentors on the roster yet. <Link to="/mentors">Add mentors</Link> so tables get someone to lead them.
-        </p>
-      )}
-      {studentsWithoutGender > 0 && (
-        <p className="dg-notice">
-          {studentsWithoutGender} {studentsWithoutGender === 1 ? 'sign-up doesn’t' : 'sign-ups don’t'} say their gender.
-          Check-in will ask.
-        </p>
-      )}
-
-      <DropZone id={UNASSIGNED} dragOver={dragOver} setDragOver={setDragOver} onDropKey={move} className="dg-tray">
-        <div className="dg-tray-head">
-          <strong>Here, not seated</strong> <span className="muted">{arrivedUnseated.length}</span>
-        </div>
-        {arrivedUnseated.length > 0 ? (
-          <ul className="dg-chips is-row">{arrivedUnseated.map((m) => chipFor(m, UNASSIGNED))}</ul>
-        ) : (
-          <p className="muted">Everyone who's here has a seat.</p>
-        )}
-        {notHereYet.length > 0 && (
-          <details className="dg-waiting">
-            <summary>
-              Signed up, not here yet <span className="muted">{notHereYet.length}</span>
-            </summary>
-            <p className="muted">Drag someone to a table to save them a seat.</p>
-            <ul className="dg-chips is-row">{notHereYet.map((s) => chipFor(asMember('student', s.id), UNASSIGNED))}</ul>
-          </details>
+        <button type="button" className="with-icon" onClick={addTable}>
+          <PlusIcon /> Table
+        </button>
+        {plan.mentors.length === 0 && (
+          <Link to="/mentors" className="dg-controls-link">
+            Add mentors
+          </Link>
         )}
         {excluded.size > 0 && (
-          <p className="dg-away">
-            Not coming:{' '}
-            {plan.mentors
-              .filter((m) => excluded.has(m.id))
-              .map((m, i) => (
-                <span key={m.id}>
-                  {i > 0 && ', '}
-                  {m.name}{' '}
-                  <button type="button" className="link-button" onClick={() => restoreMentor(m.id)}>
-                    undo
-                  </button>
-                </span>
-              ))}
-          </p>
+          <div className="dg-away">
+            <span className="dg-label">Mentors absent</span>
+            <ul className="dg-chips is-row">
+              {plan.mentors
+                .filter((m) => excluded.has(m.id))
+                .map((m) => (
+                  <li key={m.id}>
+                    <button type="button" className="away-chip" onClick={() => restoreMentor(m.id)} title={`Put ${m.name} back`}>
+                      {m.name}
+                      <PlusIcon />
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          </div>
         )}
-      </DropZone>
+        {(unseatedMentors.length > 0 || unseatedStudents.length > 0 || dragging) && (
+          <DropZone id={UNASSIGNED} dragOver={dragOver} setDragOver={setDragOver} onDropKey={move} className="dg-tray">
+            {unseatedMentors.length > 0 && (
+              <>
+                <span className="dg-label">Mentors not seated</span>
+                <ul className="dg-chips is-row" aria-label="Mentors not seated">
+                  {unseatedMentors.map((m) => chipFor(m))}
+                </ul>
+              </>
+            )}
+            {unseatedStudents.length > 0 && (
+              <>
+                <span className="dg-label">Students not seated</span>
+                <ul className="dg-chips is-row" aria-label="Students not seated">
+                  {unseatedStudents.map((m) => chipFor(m))}
+                </ul>
+              </>
+            )}
+            {unseatedMentors.length === 0 && unseatedStudents.length === 0 && <span className="dg-label">Drop here to unseat</span>}
+          </DropZone>
+        )}
+        {error && <span className="error">{error}</span>}
+      </div>
 
-      {plan.tables.length === 0 && (
-        <p className="dg-notice">No tables yet. Plan tables once sign-ups are in; you can re-plan any time before or during the event.</p>
-      )}
-
-      <div className="dg-grid">
+      <div
+        ref={grid.ref}
+        className="dg-grid"
+        style={{
+          gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${grid.rows}, minmax(0, 1fr))`,
+        }}
+      >
+        {plan.tables.length === 0 && <p className="dg-empty-board muted">No tables</p>}
         {plan.tables.map((table) => {
           const students = table.members.filter((m) => m.kind === 'student').map((m) => studentsById.get(m.id)!).filter(Boolean)
           const mentors = table.members.filter((m) => m.kind === 'mentor').map((m) => mentorsById.get(m.id)!).filter(Boolean)
-          const here = students.filter((s) => s.checked_in).length
           const warnings = tableWarnings(table, students, mentors)
+          const fits = mentors.length * IDEAL_PER_MENTOR
+          const most = Math.min(mentors.length * MAX_PER_MENTOR, MAX_STUDENTS)
+          const fill = students.length > most ? 'is-over' : students.length > fits ? 'is-warm' : ''
           return (
             <DropZone
               key={table.id}
@@ -395,7 +420,7 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
               dragOver={dragOver}
               setDragOver={setDragOver}
               onDropKey={move}
-              className={`dg-table${warnings.some((w) => w.serious) ? ' has-warning' : ''}`}
+              className={`dg-table is-${table.gender || 'nogroup'}${warnings.length ? ' has-warning' : ''}`}
             >
               <div className="dg-table-head">
                 <h4>{table.name}</h4>
@@ -403,7 +428,7 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
                   className="dg-group"
                   value={`${table.gender}:${table.level}`}
                   onChange={(e) => setGroup(table.id, e.target.value)}
-                  aria-label={`Who check-in seats at ${table.name}`}
+                  aria-label={`Group for ${table.name}`}
                 >
                   {GROUP_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -411,44 +436,27 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
                     </option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  className="chip-icon"
-                  aria-label={`Remove ${table.name}`}
-                  title="Remove table"
-                  onClick={() => removeTable(table.id)}
-                >
+                <button type="button" className="chip-icon dg-remove" aria-label={`Remove ${table.name}`} title="Remove table" onClick={() => (table.members.length > 0 ? setRemoving(table) : removeTable(table.id))}>
                   <TrashIcon />
                 </button>
               </div>
-              <p className="dg-composition">
-                {here} here{students.length > here && ` + ${students.length - here} saved`}
-                {mentors.length > 0 && ` · fits ${mentors.length * IDEAL_PER_MENTOR} (up to ${mentors.length * MAX_PER_MENTOR})`} ·{' '}
-                {mentors.length} {mentors.length === 1 ? 'mentor' : 'mentors'}
-              </p>
-              {warnings.length > 0 && (
-                <ul className="dg-warnings">
-                  {warnings.map((w) => (
-                    <li key={w.text} className={w.serious ? 'is-serious' : ''}>
-                      {w.text}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <div className={`dg-fill ${fill}`} title={`${students.length} students; fits ${fits}, up to ${most}`}>
+                <span className="dg-fill-track">
+                  <span className="dg-fill-bar" style={{ width: `${Math.min(100, fits ? (students.length / fits) * 100 : students.length ? 100 : 0)}%` }} />
+                </span>
+                <span className="dg-fill-count">
+                  {students.length}/{fits}
+                </span>
+              </div>
+              {warnings.length > 0 && <p className="dg-warning">{warnings.join(' · ')}</p>}
               <ul className="dg-chips">
                 {[...table.members]
                   .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'mentor' ? -1 : 1))
-                  .map((m) => chipFor(m, table.id, table.id))}
-                {table.members.length === 0 && <li className="dg-empty">Drop people here</li>}
+                  .map((m) => chipFor(m, table.id))}
               </ul>
             </DropZone>
           )
         })}
-        {plan.tables.length > 0 && (
-          <button type="button" className="dg-add-table with-icon" onClick={addTable}>
-            <PlusIcon /> Add table
-          </button>
-        )}
       </div>
     </section>
   )

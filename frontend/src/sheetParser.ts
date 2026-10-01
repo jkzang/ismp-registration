@@ -2,14 +2,30 @@
  * Turns a Google Sheets tab into standardized sign-up rows, in the browser.
  *
  * Only name, nickname, gender, enrollment level and contact status leave this module; phone,
- * email, chat IDs and every other column are dropped here and never sent to the server.
+ * email, chat IDs and every other column are dropped here and never sent to the server. The
+ * attendance, phone and email columns are only located: attendance so check-ins can be ticked off
+ * in the sheet, phone and email so studentDatabase.ts can match people in the browser.
  */
 
 export type Gender = 'female' | 'male'
-export type Level = 'undergrad' | 'grad'
-export type ContactStatus = 'not_contacted' | 'awaiting_response' | 'confirmed' | 'no_response' | 'not_inviting'
+/** 'other' is Enrollment Status "Other": not a student. */
+export type Level = 'undergrad' | 'grad' | 'other'
+export type ContactStatus =
+  | 'not_contacted'
+  | 'waiting_to_contact'
+  | 'awaiting_response'
+  | 'confirmed'
+  | 'no_response'
+  | 'not_coming'
+  | 'no_room'
+  | 'not_inviting'
 
-export type FieldKey = 'name' | 'first_name' | 'last_name' | 'nickname' | 'gender' | 'level' | 'status' | 'timestamp'
+export type FieldKey =
+  | 'name' | 'first_name' | 'last_name' | 'nickname' | 'gender' | 'level' | 'status' | 'timestamp'
+  | 'attendance' | 'phone' | 'email'
+
+/** Located but never imported. */
+export const LOCATE_ONLY: FieldKey[] = ['attendance', 'phone', 'email']
 
 /** Field -> the header text of the column it comes from; '' means "don't use a column". */
 export type FieldMap = Partial<Record<FieldKey, string>>
@@ -30,6 +46,8 @@ export type ParseResult = {
   columns: Partial<Record<FieldKey, number>>
   fieldMap: FieldMap
   rows: SignupRow[]
+  /** 0-based row index in the tab of each of `rows`. */
+  rowIndexes: number[]
   /** Headers of columns that are not imported. */
   ignored: string[]
   unrecognized: { gender: string[]; level: string[]; status: string[] }
@@ -45,6 +63,9 @@ export const FIELD_LABELS: Record<FieldKey, string> = {
   level: 'Enrollment status',
   status: 'Contact status',
   timestamp: 'Timestamp',
+  attendance: 'Attendance',
+  phone: 'Phone (for matching)',
+  email: 'Email (for matching)',
 }
 
 export const FIELD_KEYS = Object.keys(FIELD_LABELS) as FieldKey[]
@@ -67,6 +88,9 @@ const FIELD_PATTERNS: [FieldKey, RegExp[]][] = [
   ['gender', [/\bgender\b/, /\bsex\b/]],
   ['level', [/\benrollment\b/, /\b(student|academic|degree|school) level\b/, /\byear in school\b/, /\bdegree\b/, /^level$/]],
   ['status', [/\bcontact status\b/, /^status$/]],
+  ['attendance', [/\battend(ance|ed)?\b/, /\bchecked in\b/, /^present$/]],
+  ['phone', [/\b(phone|cell|mobile)\b/]],
+  ['email', [/\be ?mail\b/]],
 ]
 
 // Never treated as a name column even though the header mentions "name".
@@ -140,6 +164,7 @@ export function genderOf(text: string): Gender | '' {
 export function levelOf(text: string): Level | '' {
   const t = normalize(text)
   if (!t) return ''
+  if (t === 'other') return 'other'
   if (/undergrad|exchange|freshman|sophomore|junior|senior|bachelor/.test(t)) return 'undergrad'
   if (/master|\bms\b|\bma\b|mba|ph ?d|doctor|grad|visiting|scholar|postdoc/.test(t)) return 'grad'
   return ''
@@ -147,10 +172,13 @@ export function levelOf(text: string): Level | '' {
 
 const STATUS_BY_TEXT: Record<string, ContactStatus> = {
   'not contacted': 'not_contacted',
+  'waiting to contact': 'waiting_to_contact',
   'awaiting response': 'awaiting_response',
   awaiting: 'awaiting_response',
   confirmed: 'confirmed',
   'no response': 'no_response',
+  'not coming': 'not_coming',
+  'no room': 'no_room',
   'not inviting': 'not_inviting',
 }
 
@@ -193,7 +221,7 @@ export function parseSheet(values: string[][], options: { headerRow?: number; fi
 
   const fieldMap: FieldMap = {}
   for (const field of FIELD_KEYS) fieldMap[field] = columns[field] === undefined ? '' : headers[columns[field]!]
-  const usedColumns = new Set(Object.values(columns))
+  const usedColumns = new Set(FIELD_KEYS.filter((f) => !LOCATE_ONLY.includes(f)).map((f) => columns[f]))
   const ignored = headers.filter((h, i) => h && !usedColumns.has(i))
 
   const cell = (row: string[], field: FieldKey) => (columns[field] === undefined ? '' : clean(row[columns[field]!]))
@@ -201,9 +229,10 @@ export function parseSheet(values: string[][], options: { headerRow?: number; fi
   const missing = { gender: 0, level: 0 }
   const seenKeys = new Map<string, number>()
   const rows: SignupRow[] = []
+  const rowIndexes: number[] = []
   const headerName = normalize(columns.name !== undefined ? headers[columns.name] : headers[columns.first_name!])
 
-  for (const row of values.slice(headerRow + 1)) {
+  for (const [offset, row] of values.slice(headerRow + 1).entries()) {
     const name = (cell(row, 'name') || clean(`${cell(row, 'first_name')} ${cell(row, 'last_name')}`)).slice(0, 200)
     if (!name || normalize(name) === headerName) continue
 
@@ -223,6 +252,7 @@ export function parseSheet(values: string[][], options: { headerRow?: number; fi
     const base = hash(`${cell(row, 'timestamp')}|${normalize(name)}`)
     const seen = seenKeys.get(base) ?? 0
     seenKeys.set(base, seen + 1)
+    rowIndexes.push(headerRow + 1 + offset)
     rows.push({
       key: seen ? `${base}-${seen + 1}` : base,
       name,
@@ -239,6 +269,7 @@ export function parseSheet(values: string[][], options: { headerRow?: number; fi
     columns,
     fieldMap,
     rows,
+    rowIndexes,
     ignored,
     unrecognized: {
       gender: [...unrecognized.gender],
@@ -247,4 +278,36 @@ export function parseSheet(values: string[][], options: { headerRow?: number; fi
     },
     missing,
   }
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+// Cell text goes into a warning, so keep it short.
+const quote = (values: string[]) => {
+  const shown = values.slice(0, 5).map((v) => `“${v.length > 30 ? `${v.slice(0, 29)}…` : v}”`)
+  return values.length > 5 ? `${shown.join(', ')} and ${values.length - 5} more` : shown.join(', ')
+}
+
+/** Anything about the tab worth a second look, in plain words. Empty when it's formatted as expected. */
+export function importWarnings(parsed: ParseResult): string[] {
+  const { columns, rows, unrecognized, missing } = parsed
+  const warnings: string[] = []
+  if (columns.gender === undefined) warnings.push('No Gender column found, so check-in will ask everyone.')
+  else if (missing.gender) {
+    const values = unrecognized.gender.length ? ` (unrecognized: ${quote(unrecognized.gender)})` : ''
+    warnings.push(`${plural(missing.gender, 'sign-up has', 'sign-ups have')} no gender${values}, so check-in will ask.`)
+  }
+  if (columns.level === undefined) warnings.push('No Enrollment Status column found, so check-in will ask everyone.')
+  else if (missing.level) {
+    const values = unrecognized.level.length ? ` (unrecognized: ${quote(unrecognized.level)})` : ''
+    warnings.push(`${plural(missing.level, 'sign-up has', 'sign-ups have')} no enrollment status${values}, so check-in will ask.`)
+  }
+  if (columns.status === undefined) warnings.push('No Contact Status column found, so everyone counts as Not contacted.')
+  else if (unrecognized.status.length) {
+    warnings.push(`Unrecognized contact statuses ${quote(unrecognized.status)} count as Not contacted.`)
+  }
+  const others = rows.filter((r) => r.level === 'other').length
+  if (others) {
+    warnings.push(`${plural(others, 'sign-up has', 'sign-ups have')} enrollment Other: not planned for, and check-in asks before admitting them.`)
+  }
+  return warnings
 }

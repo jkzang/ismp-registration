@@ -80,8 +80,8 @@ export const api = {
   importSheet: (data: NewSheet) => post<Sheet>('/sheets/', data),
   resyncSheet: (id: number, data: SheetRows) =>
     request<ResyncResult>(`/sheets/${id}/rows/`, { method: 'PUT', body: JSON.stringify(data) }),
-  setCapacity: (id: number, capacity: number | null) =>
-    request<Sheet>(`/sheets/${id}/`, { method: 'PATCH', body: JSON.stringify({ capacity }) }),
+  updateSheet: (id: number, data: Partial<Pick<Sheet, 'name' | 'capacity' | 'starts_at' | 'reserved_released_at'>>) =>
+    request<Sheet>(`/sheets/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteSheet: (id: number) => request<void>(`/sheets/${id}/`, { method: 'DELETE' }),
 
   getPlan: (sheetId: number) => request<SeatingPlan>(`/sheets/${sheetId}/plan/`),
@@ -95,4 +95,6 @@ export const api = {
   checkIn: (signupId: number, door: { gender?: Gender; level?: Level } = {}) =>
     post<CheckInResult>(`/signups/${signupId}/check-in/`, door),
   undoCheckIn: (signupId: number) => post<{ student: PlanStudent }>(`/signups/${signupId}/undo-check-in/`),
+  waitlist: (signupId: number) => post<{ student: PlanStudent }>(`/signups/${signupId}/waitlist/`),
+  undoWaitlist: (signupId: number) => post<{ student: PlanStudent }>(`/signups/${signupId}/undo-waitlist/`),
 }
