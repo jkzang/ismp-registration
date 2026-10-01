@@ -135,8 +135,7 @@ export default function App() {
             onImported={(sheet) => {
               setImporting(null)
               refreshSheets().catch(() => {})
-              // The sheet page explains the first table plan once.
-              navigate(`/sheets/${sheet.id}`, { state: { firstPlan: true } })
+              navigate(`/sheets/${sheet.id}`)
             }}
           />
         )}

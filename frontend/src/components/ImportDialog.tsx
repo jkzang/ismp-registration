@@ -8,7 +8,7 @@ import { importWarnings } from '../sheetParser'
 import { describeFills, parseWithDatabase } from '../studentDatabase'
 import { useUndo } from '../undo'
 import type { Mentor, Sheet } from '../types'
-import { CloseIcon, SheetIcon } from './icons'
+import { CheckIcon, CloseIcon, SheetIcon } from './icons'
 import { Segmented } from './Segmented'
 
 type Step =
@@ -34,6 +34,8 @@ export function ImportDialog({ start, onClose, onImported }: {
   const pickingRef = useRef(false)
   const [step, setStep] = useState<Step>({ kind: 'start' })
   const [busy, setBusy] = useState<string | null>(null)
+  // The import's stages so far: the last is under way, the ones before it are done.
+  const [stages, setStages] = useState<string[] | null>(null)
   const [error, setError] = useState<string | null>('error' in start ? start.error : null)
   // Kept across a change of tab or spreadsheet, so they're only typed once.
   // Most sheets are imported on the day, shortly before the event: today, at the next full hour.
@@ -101,11 +103,13 @@ export function ImportDialog({ start, onClose, onImported }: {
       setError(errorMessage(err, 'Something went wrong.'))
     } finally {
       setBusy(null)
+      setStages(null)
     }
   }
 
   // Reads the tab and imports it as is: the header row and columns are found automatically.
   async function importTab(file: PickedFile, title: string, tabs: Tab[], tab: Tab, event: { starts_at: string; capacity: number; absent_mentor_ids: number[] }) {
+    setStages([`Reading “${tab.title}” from Google Sheets`])
     const [values, database] = await Promise.all([
       getTabValues(config, file.id, tab.title),
       readDatabaseTab(config, file.id, tabs, tab.id),
@@ -114,11 +118,15 @@ export function ImportDialog({ start, onClose, onImported }: {
     if (parsed.rows.length === 0) throw new Error(`No sign-ups found in “${tab.title}”.`)
     // The import doesn't depend on this; a sheet that can't be edited still imports the filled values.
     let writeError: string | null = null
+    if (fills.length) setStages((done) => [...(done ?? []), `Filling ${fills.length} blank ${fills.length === 1 ? 'cell' : 'cells'} from the Student Database`])
     try {
       await writeCells(config, file.id, tab.title, fills)
     } catch (err) {
       writeError = errorMessage(err, 'Couldn’t write to the sheet.')
     }
+    // One request: the server saves the sign-ups and plans the first tables together.
+    const people = `${parsed.rows.length} ${parsed.rows.length === 1 ? 'sign-up' : 'sign-ups'}`
+    setStages((done) => [...(done ?? []), `Saving ${people} and planning the tables`])
     const sheet = await api.importSheet({
       spreadsheet_id: file.id,
       spreadsheet_title: title,
@@ -129,13 +137,14 @@ export function ImportDialog({ start, onClose, onImported }: {
       warnings: importWarnings(parsed),
       ...event,
     })
-    if (fills.length) {
-      notify(
-        writeError
-          ? `Imported, but the ${fills.length} values from the Student Database weren’t written to the sheet: ${writeError}`
-          : `Filled ${fills.length} blank cells in the sheet from the Student Database (${describeFills(fills)})`,
-      )
-    }
+    const imported = `Imported ${people} and planned the tables`
+    notify(
+      !fills.length
+        ? imported
+        : writeError
+          ? `${imported}, but the ${fills.length} values from the Student Database weren’t written to the sheet: ${writeError}`
+          : `${imported} · filled ${fills.length} blank cells in the sheet from the Student Database (${describeFills(fills)})`,
+    )
     onImported(sheet)
   }
 
@@ -235,7 +244,7 @@ export function ImportDialog({ start, onClose, onImported }: {
           </>
         )}
 
-        {step.kind === 'details' && (
+        {step.kind === 'details' && !stages && (
           <form className="import-details" onSubmit={submitDetails}>
             <p className="import-details-tab">
               Importing <strong>{step.tab.title}</strong> <span className="muted">· {step.tab.rows} rows</span>
@@ -358,7 +367,25 @@ export function ImportDialog({ start, onClose, onImported }: {
           </form>
         )}
 
-        {busy && <p className="muted">{busy}</p>}
+        {stages && (
+          <ol className="import-progress" role="status">
+            {stages.map((stage, i) => {
+              const done = i < stages.length - 1
+              return (
+                <li key={stage} className={done ? 'is-done' : undefined}>
+                  {done ? <CheckIcon /> : <span className="spinner" aria-hidden="true" />}
+                  {stage}{!done && '…'}
+                </li>
+              )
+            })}
+            <li className="muted import-progress-note">Planning tries many seatings, so it can take a moment.</li>
+          </ol>
+        )}
+        {busy && !stages && (
+          <p className="muted loading-line" role="status">
+            <span className="spinner" aria-hidden="true" /> {busy}
+          </p>
+        )}
         {error && <p className="error">{error}</p>}
       </div>
     </dialog>

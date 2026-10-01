@@ -2497,75 +2497,62 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
   justify-content: flex-end;
 }
 
-/* First plan explanation, shown once after an import */
+/* Progress while a sheet is imported and its first tables are planned */
 
-.first-plan-dialog {
-  width: min(560px, calc(100vw / var(--ui-scale) - 32px));
-  max-height: calc(100vh / var(--ui-scale) - 48px);
+.spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
 }
 
-.first-plan-dialog[open] {
+.loading-line {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
-.first-plan-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  overflow-y: auto;
-}
-
-.first-plan-body h2,
-.first-plan-body p {
-  margin: 0;
-}
-
-.first-plan-body section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.first-plan-body h3 {
-  margin: 0;
-  font-size: 14px;
-}
-
-.first-plan-list,
-.first-plan-groups {
+.import-progress {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 4px 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  font-size: 14px;
 }
 
-.first-plan-list li {
+.import-progress li {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: var(--surface);
-  font-size: 14px;
+  align-items: center;
+  gap: 8px;
   font-weight: 600;
 }
 
-.first-plan-list .muted {
+.import-progress li.is-done {
   font-weight: 400;
-  text-align: right;
+  color: var(--text-muted);
 }
 
-.first-plan-groups li {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 14px;
+.import-progress svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+
+.import-progress .import-progress-note {
+  font-weight: 400;
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.5s;
+  }
 }
 
 /* Mentors */
