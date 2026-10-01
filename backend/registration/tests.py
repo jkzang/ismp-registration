@@ -1,9 +1,12 @@
+import shutil
+import tempfile
 from datetime import timedelta
+from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import override_settings
+from django.test import SimpleTestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
@@ -551,3 +554,36 @@ class CheckInSeatingTests(SeatingBase):
         self.check_in(student)
         student.refresh_from_db()
         self.assertEqual(student.checked_in_by, self.user)
+
+
+class FrontendTests(SimpleTestCase):
+    def setUp(self):
+        self.dist = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dist)
+        (self.dist / 'index.html').write_text('<div id="root"></div>')
+
+    def test_page_paths_get_the_app(self):
+        with override_settings(FRONTEND_DIST=self.dist):
+            for path in ('/', '/sheets/12', '/mentors'):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, status.HTTP_200_OK, path)
+                self.assertContains(response, 'id="root"')
+                self.assertEqual(response['Cache-Control'], 'no-cache')
+
+    def test_unknown_api_paths_still_404(self):
+        with override_settings(FRONTEND_DIST=self.dist):
+            self.assertEqual(self.client.get('/api/nope/').status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_without_a_build_pages_404(self):
+        with override_settings(FRONTEND_DIST=self.dist / 'missing'):
+            self.assertEqual(self.client.get('/sheets/12').status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_pages_carry_a_content_security_policy(self):
+        with override_settings(FRONTEND_DIST=self.dist, CSP_REPORT_ONLY=False):
+            policy = self.client.get('/')['Content-Security-Policy']
+        self.assertIn("default-src 'self'", policy)
+        self.assertIn('https://accounts.google.com/gsi/client', policy)
+        with override_settings(FRONTEND_DIST=self.dist, CSP_REPORT_ONLY=True):
+            response = self.client.get('/')
+        self.assertIn('Content-Security-Policy-Report-Only', response.headers)
+        self.assertNotIn('Content-Security-Policy', response.headers)

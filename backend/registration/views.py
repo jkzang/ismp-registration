@@ -2,9 +2,11 @@ from django.conf import settings
 from django.contrib.auth import get_user_model, login, logout
 from django.db import transaction
 from django.db.models import Count
+from django.http import Http404, HttpResponse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
+from django.views.decorators.http import require_safe
 from rest_framework import mixins, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -16,6 +18,18 @@ from rest_framework.views import APIView
 from . import models, seating, serializers
 from .access import SignedIn, chapter_of
 from .google_auth import NotAllowed, verify_credential
+
+
+@require_safe
+def frontend_index(request):
+    """The built React app's index.html, for any page path; the app routes in the browser."""
+    index = settings.FRONTEND_DIST / 'index.html'
+    if not index.is_file():
+        raise Http404('The frontend isn’t built. Run npm run build in frontend/, or use the Vite dev server.')
+    response = HttpResponse(index.read_bytes(), content_type='text/html; charset=utf-8')
+    # Always revalidate, so a deploy's new asset filenames are picked up right away.
+    response['Cache-Control'] = 'no-cache'
+    return response
 
 
 def user_payload(user):

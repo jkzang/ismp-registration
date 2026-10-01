@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 from rest_framework.routers import DefaultRouter
 
 from registration import views
@@ -21,3 +21,6 @@ urlpatterns = [
 
 if settings.DEBUG:
     urlpatterns.append(path('admin/', admin.site.urls))
+
+# Everything else is a page of the React app, which routes in the browser.
+urlpatterns.append(re_path(r'^(?!api/|admin/)', views.frontend_index))
