@@ -2,10 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { api, errorMessage } from '../api'
 import {
-  signupsKey,
   type TableLevel,
   type PlanMentor,
-  type PlanScore,
   type PlanStudent,
   type SeatingPlan,
   type SeatingTable,
@@ -37,18 +35,6 @@ const GROUP_OPTIONS: { value: string; label: string }[] = [
   { value: 'coed:undergrad', label: 'Coed UG' },
   { value: 'coed:grad', label: 'Coed Grad' },
   { value: ':', label: 'No group' },
-]
-
-// What the plan's score counts, in the order shown when several add to it.
-const SCORE_CAUSES: [keyof PlanScore['causes'], string][] = [
-  ['no_table', 'students with no table to sit at'],
-  ['past_max', `tables past ${MAX_STUDENTS} students`],
-  ['alone', 'students alone at a table'],
-  ['lone_gender', 'students who are the only one of their gender at a coed table'],
-  ['past_ideal', `students past ${IDEAL_PER_MENTOR} per mentor`],
-  ['other_level', 'students at the other level’s table'],
-  ['empty_table', 'tables nobody comes to'],
-  ['lone_mentor', 'tables led by one mentor'],
 ]
 
 /** Why a table can't take one more of this kind, or null if it can. */
@@ -231,8 +217,6 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
   const [settingAttendance, setSettingAttendance] = useState(false)
   const simulateRef = useRef<HTMLSpanElement>(null)
   const plan = simulation ? { ...savedPlan, ...simulation } : savedPlan
-  // How the saved tables hold up over many pretend check-ins.
-  const [score, setScore] = useState<PlanScore | null>(null)
   const [removing, setRemoving] = useState<SeatingTable | null>(null)
   const { push } = useUndo()
   const [dragOver, setDragOver] = useState<string | null>(null)
@@ -251,26 +235,6 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
   // Re-planning would move mentors away from students already told their table. The first plan
   // is still allowed, in case check-in began before anyone planned.
   const checkInStarted = savedPlan.tables.length > 0 && savedPlan.students.some((s) => s.checked_in)
-  // Scored again whenever the tables are saved or the sign-ups change (a re-sync), since both move it.
-  const scored = savedPlan.tables.length > 0 && !checkInStarted
-  const signups = signupsKey(savedPlan)
-  useEffect(() => {
-    if (!scored) return
-    let stale = false
-    api
-      .scorePlan(sheetId)
-      .then((next) => !stale && setScore(next))
-      .catch(() => !stale && setScore(null))
-    return () => {
-      stale = true
-    }
-  }, [sheetId, scored, signups, savedPlan.updated_at])
-  const scoreCauses = score
-    ? SCORE_CAUSES.filter(([cause]) => score.causes[cause] > 0)
-        .sort(([a], [b]) => score.causes[b] - score.causes[a])
-        .map(([cause, label]) => `${score.causes[cause]} from ${label}`)
-    : []
-
   const unseatedMentors = attendingMentors.filter((m) => !seated.has(`mentor:${m.id}`)).map((m) => asMember('mentor', m.id))
   const unseatedStudents = plan.students
     .filter((s) => s.checked_in && !seated.has(`student:${s.id}`))
@@ -634,14 +598,6 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
           </button>
         </p>
       )}
-      {score && scored && !simulation && (
-        <p className="dg-score" role="status">
-          <strong>{score.average}</strong> penalty points on an average day, {score.worst} on the worst, over {score.days}{' '}
-          pretend check-ins with {score.turnout[0]} to {score.turnout[1]} coming.
-          {scoreCauses.length > 0 && ` Mostly ${scoreCauses.slice(0, 3).join(', ')}.`} Lower is better.
-        </p>
-      )}
-
       <div
         ref={grid.ref}
         className="dg-grid"
