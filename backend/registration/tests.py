@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework import status
@@ -43,6 +44,9 @@ class ApiTestBase(APITestCase):
 
 @override_settings(GOOGLE_CLIENT_ID='client-123', ALLOWED_GOOGLE_DOMAIN='acts2.network')
 class GoogleSignInTests(APITestCase):
+    def setUp(self):
+        cache.clear()  # the sign-in throttle counts in the cache
+
     def claims(self, **overrides):
         return {'sub': '999', 'name': 'New Person', 'email': 'new@acts2.network', 'email_verified': True,
                 'hd': 'acts2.network', **overrides}
@@ -89,6 +93,13 @@ class GoogleSignInTests(APITestCase):
         with mock.patch('registration.views.verify_credential', return_value=self.claims()):
             response = client.post('/api/auth/google/', {'credential': 'token'}, format='json')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_sign_in_is_throttled(self):
+        with mock.patch('registration.views.verify_credential', side_effect=NotAllowed('Nope')):
+            codes = [self.client.post('/api/auth/google/', {'credential': 'token'}, format='json').status_code
+                     for _ in range(21)]
+        self.assertEqual(codes[:20], [status.HTTP_403_FORBIDDEN] * 20)
+        self.assertEqual(codes[20], status.HTTP_429_TOO_MANY_REQUESTS)
 
 
 class ChapterTests(APITestCase):
