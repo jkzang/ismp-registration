@@ -66,6 +66,8 @@ class SheetImportSerializer(RowsSerializer):
     # Asked for at import; both can be changed on the sheet afterwards.
     starts_at = serializers.DateTimeField()
     capacity = serializers.IntegerField(min_value=1, max_value=100000)
+    # Mentors who won't be there; the first plan leaves them out. Changed on the Tables board afterwards.
+    absent_mentor_ids = serializers.ListField(child=serializers.IntegerField(), default=list, max_length=500)
 
 
 class SheetSerializer(serializers.ModelSerializer):

@@ -29,6 +29,10 @@
   background: var(--frame);
   accent-color: var(--accent-fill);
   -webkit-font-smoothing: antialiased;
+
+  /* The whole UI is drawn at this scale. Sizes are in px, so #root is zoomed; viewport units
+     inside it are divided by the scale so 100vh still means the full window. */
+  --ui-scale: 0.9;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -60,6 +64,10 @@
 
 body {
   margin: 0;
+}
+
+#root {
+  zoom: var(--ui-scale);
 }
 
 .app {
@@ -256,7 +264,7 @@ input[type='radio'] {
 
 .shell {
   display: flex;
-  min-height: 100vh;
+  min-height: calc(100vh / var(--ui-scale));
   background: var(--frame);
 }
 
@@ -266,7 +274,7 @@ input[type='radio'] {
   display: flex;
   flex-direction: column;
   margin: 8px 8px 8px 0;
-  height: calc(100dvh - 16px);
+  height: calc(100dvh / var(--ui-scale) - 16px);
   overflow: hidden;
   border-radius: 16px;
   background: var(--bg);
@@ -284,7 +292,7 @@ input[type='radio'] {
   top: 0;
   flex: none;
   width: var(--sidebar-w);
-  height: 100vh;
+  height: calc(100vh / var(--ui-scale));
   overflow: hidden;
   transition: width 0.22s ease;
 }
@@ -523,7 +531,7 @@ input[type='radio'] {
     top: 0;
     bottom: 0;
     z-index: 60;
-    --sidebar-w: min(260px, 84vw);
+    --sidebar-w: min(260px, 84vw / var(--ui-scale));
     height: auto;
     transform: translateX(-100%);
     transition: transform 0.22s ease;
@@ -547,7 +555,7 @@ input[type='radio'] {
 
   .shell-main {
     margin: 0;
-    height: 100dvh;
+    height: calc(100dvh / var(--ui-scale));
     border-radius: 0;
     box-shadow: none;
   }
@@ -620,7 +628,7 @@ a {
 /* Sign-in and chapter setup */
 
 .auth-page {
-  min-height: 100vh;
+  min-height: calc(100vh / var(--ui-scale));
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -994,7 +1002,7 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
   top: calc(100% + 6px);
   right: 0;
   z-index: 20;
-  width: min(360px, calc(100vw - 32px));
+  width: min(360px, calc(100vw / var(--ui-scale) - 32px));
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1068,7 +1076,7 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100vw / var(--ui-scale) - 32px);
   margin: 0;
   padding: 6px 6px 6px 16px;
   border-radius: 10px;
@@ -1108,7 +1116,7 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
   min-height: 0;
   display: grid;
   /* Wide enough for a name with its nickname, and the status and table chips side by side. */
-  grid-template-columns: clamp(340px, 30vw, 440px) minmax(0, 1fr);
+  grid-template-columns: clamp(340px, 30vw / var(--ui-scale), 440px) minmax(0, 1fr);
   gap: 18px;
 }
 
@@ -2154,8 +2162,8 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
 /* Import dialog */
 
 .import-dialog {
-  width: min(760px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
+  width: min(760px, calc(100vw / var(--ui-scale) - 32px));
+  max-height: calc(100vh / var(--ui-scale) - 48px);
   padding: 0;
   border: none;
   border-radius: 16px;
@@ -2177,7 +2185,7 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
 /* Confirm dialog (in place of window.confirm) */
 
 .confirm-dialog {
-  width: min(420px, calc(100vw - 32px));
+  width: min(420px, calc(100vw / var(--ui-scale) - 32px));
   padding: 0;
   border: none;
   border-radius: 16px;
@@ -2326,6 +2334,18 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
   padding: 0 12px;
 }
 
+.import-field input.import-field-wide {
+  width: 100%;
+}
+
+.import-field .segmented {
+  align-self: flex-start;
+}
+
+.import-field .segmented button {
+  min-width: 56px;
+}
+
 .import-details-actions {
   display: flex;
   justify-content: flex-end;
@@ -2334,8 +2354,8 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
 /* First plan explanation, shown once after an import */
 
 .first-plan-dialog {
-  width: min(560px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
+  width: min(560px, calc(100vw / var(--ui-scale) - 32px));
+  max-height: calc(100vh / var(--ui-scale) - 48px);
 }
 
 .first-plan-dialog[open] {

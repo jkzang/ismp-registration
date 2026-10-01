@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
+import { matchAbsentMentors } from '../absentMentors'
 import { api, errorMessage } from '../api'
 import { useApp } from '../appContext'
 import { getAccessToken, getSpreadsheet, getTabValues, pickSpreadsheet, readDatabaseTab, writeCells, type PickedFile, type Tab } from '../google'
 import { importWarnings } from '../sheetParser'
 import { describeFills, parseWithDatabase } from '../studentDatabase'
 import { useUndo } from '../undo'
-import type { Sheet } from '../types'
+import type { Mentor, Sheet } from '../types'
 import { CloseIcon, SheetIcon } from './icons'
+import { Segmented } from './Segmented'
 
 type Step =
   | { kind: 'start' }
@@ -32,6 +34,8 @@ export function ImportDialog({ start, onClose, onImported }: {
   // Kept across a change of tab or spreadsheet, so they're only typed once.
   const [startsAt, setStartsAt] = useState('')
   const [capacity, setCapacity] = useState('')
+  const [mentorsAbsent, setMentorsAbsent] = useState<'no' | 'yes'>('no')
+  const [absentNames, setAbsentNames] = useState('')
 
   useEffect(() => {
     dialogRef.current?.showModal()
@@ -50,7 +54,7 @@ export function ImportDialog({ start, onClose, onImported }: {
   }
 
   // Reads the tab and imports it as is: the header row and columns are found automatically.
-  async function importTab(file: PickedFile, title: string, tabs: Tab[], tab: Tab, event: { starts_at: string; capacity: number }) {
+  async function importTab(file: PickedFile, title: string, tabs: Tab[], tab: Tab, event: { starts_at: string; capacity: number; absent_mentor_ids: number[] }) {
     const [values, database] = await Promise.all([
       getTabValues(config, file.id, tab.title),
       readDatabaseTab(config, file.id, tabs, tab.id),
@@ -124,7 +128,27 @@ export function ImportDialog({ start, onClose, onImported }: {
     // The inputs are `required` too; this catches what the browser's own check lets through.
     if (!startsAt || Number.isNaN(starts.getTime())) return setError('Enter the date and time of the event.')
     if (!Number.isInteger(people) || people < 1) return setError('Enter the event’s capacity as a whole number, 1 or more.')
-    run('Importing…', () => importTab(step.file, step.title, step.tabs, step.tab, { starts_at: starts.toISOString(), capacity: people }))
+    if (mentorsAbsent === 'yes' && !absentNames.trim()) return setError('Enter the names of the mentors who’ll be absent, or choose No.')
+    run('Importing…', async () => {
+      const absent = mentorsAbsent === 'yes' ? await findAbsentMentors() : []
+      await importTab(step.file, step.title, step.tabs, step.tab, {
+        starts_at: starts.toISOString(),
+        capacity: people,
+        absent_mentor_ids: absent,
+      })
+    })
+  }
+
+  // The typed names are matched to the chapter's mentors, so the first plan can leave them out.
+  async function findAbsentMentors() {
+    const mentors: Mentor[] = await api.listMentors()
+    const { ids, unknown, ambiguous } = matchAbsentMentors(absentNames, mentors)
+    const quoted = (names: string[]) => names.map((n) => `“${n}”`).join(', ')
+    if (unknown.length) {
+      throw new Error(`No mentor in this chapter matches ${quoted(unknown)}. Check the spelling against the Mentors page.`)
+    }
+    if (ambiguous.length) throw new Error(`More than one mentor matches ${quoted(ambiguous)}. Enter their full name.`)
+    return ids
   }
 
   return (
@@ -207,7 +231,33 @@ export function ImportDialog({ start, onClose, onImported }: {
                 disabled={!!busy}
               />
             </label>
-            <p className="muted">Both can be changed after the import, at the top of the sheet’s page.</p>
+            <div className="import-field">
+              <span>Will there be any mentors absent?</span>
+              <Segmented
+                label="Will there be any mentors absent?"
+                value={mentorsAbsent}
+                options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]}
+                onChange={setMentorsAbsent}
+              />
+            </div>
+            {mentorsAbsent === 'yes' && (
+              <label className="import-field">
+                <span>Who will be absent?</span>
+                <input
+                  type="text"
+                  className="import-field-wide"
+                  value={absentNames}
+                  onChange={(e) => setAbsentNames(e.target.value)}
+                  placeholder="Names, separated by commas"
+                  autoFocus
+                  disabled={!!busy}
+                />
+              </label>
+            )}
+            <p className="muted">
+              All of these can be changed after the import: the date and capacity at the top of the sheet’s page, and
+              mentors on the Tables board.
+            </p>
             <div className="import-details-actions">
               <button type="submit" className="primary" disabled={!!busy}>
                 Import

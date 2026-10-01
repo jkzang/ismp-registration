@@ -204,7 +204,13 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
             replace_rows(sheet, data['rows'])
             # A first plan right away, so the organizer lands on tables rather than an empty board.
             students, mentors = seating.attendees(sheet)
-            models.SeatingPlan.objects.create(sheet=sheet, tables=seating.generate(students, mentors, []))
+            absent = set(data['absent_mentor_ids'])
+            if not absent <= {m['id'] for m in mentors}:
+                raise drf_serializers.ValidationError('Only mentors in this chapter can be marked as absent.')
+            plan = models.SeatingPlan.objects.create(
+                sheet=sheet, tables=seating.generate(students, [m for m in mentors if m['id'] not in absent], []),
+            )
+            plan.excluded_mentors.set(absent)
         return Response(self.get_serializer(self.get_queryset().get(pk=sheet.pk)).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['put'])

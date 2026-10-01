@@ -50,8 +50,14 @@ export type SheetRows = {
   warnings: string[]
 }
 
-/** The start time and capacity are asked for at import. */
-export type NewSheet = SheetRows & { spreadsheet_id: string; tab_id: number; starts_at: string; capacity: number }
+/** The start time, capacity and absent mentors are asked for at import. */
+export type NewSheet = SheetRows & {
+  spreadsheet_id: string
+  tab_id: number
+  starts_at: string
+  capacity: number
+  absent_mentor_ids: number[]
+}
 
 export type ResyncResult = { sheet: Sheet; added: number; updated: number; removed: number }
 

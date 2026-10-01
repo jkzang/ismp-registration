@@ -208,6 +208,23 @@ class ImportTests(ApiTestBase):
         response = self.client.post('/api/sheets/', import_body([row('k1', 'Amy')], capacity=45), format='json')
         self.assertEqual((response.data['capacity'], response.data['starts_at']), (45, '2026-10-01T19:00:00Z'))
 
+    def test_import_leaves_absent_mentors_out_of_the_first_plan(self):
+        here = models.Mentor.objects.create(chapter=self.chapter, name='Mia', gender='female')
+        away = models.Mentor.objects.create(chapter=self.chapter, name='Ivy', gender='female')
+        rows = [row(f'k{i}', f'Student {i}', 'female', 'grad') for i in range(4)]
+        response = self.client.post('/api/sheets/', import_body(rows, absent_mentor_ids=[away.pk]), format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        plan = self.client.get(f'/api/sheets/{response.data["id"]}/plan/').data
+        seated = {m['id'] for t in plan['tables'] for m in t['members'] if m['kind'] == 'mentor'}
+        self.assertEqual((seated, plan['excluded_mentor_ids']), ({here.pk}, [away.pk]))
+
+    def test_import_rejects_absent_mentors_from_another_chapter(self):
+        outsider = models.Mentor.objects.create(chapter=self.other_chapter, name='Zed', gender='male')
+        body = import_body([row('k1', 'Amy')], absent_mentor_ids=[outsider.pk])
+        response = self.client.post('/api/sheets/', body, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(models.SignupSheet.objects.exists())
+
     def test_import_plans_the_tables_right_away(self):
         mentor = models.Mentor.objects.create(chapter=self.chapter, name='Mia', gender='female')
         rows = [row(f'k{i}', f'Student {i}', 'female', 'grad') for i in range(12)]  # 10.2 expected
