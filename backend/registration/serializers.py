@@ -63,6 +63,9 @@ class RowsSerializer(serializers.Serializer):
 class SheetImportSerializer(RowsSerializer):
     spreadsheet_id = serializers.RegexField(r'^[A-Za-z0-9_-]{10,128}$')
     tab_id = serializers.IntegerField(min_value=0)
+    # Asked for at import; both can be changed on the sheet afterwards.
+    starts_at = serializers.DateTimeField()
+    capacity = serializers.IntegerField(min_value=1, max_value=100000)
 
 
 class SheetSerializer(serializers.ModelSerializer):

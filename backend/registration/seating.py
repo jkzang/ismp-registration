@@ -345,7 +345,11 @@ def plan_payload(plan):
         'students': students,
         'mentors': mentors,
         'expected': [
-            {'gender': gender, 'level': level, 'count': round(expected[(gender, level)], 1)}
+            {
+                'gender': gender, 'level': level, 'count': round(expected[(gender, level)], 1),
+                # Before the cap of one table per mentor; the first-plan explanation compares the two.
+                'tables_wanted': _tables_wanted(expected[(gender, level)]),
+            }
             for gender in (FEMALE, MALE) for level in (UNDERGRAD, GRAD)
         ],
         'show_up_rates': SHOW_UP_RATES,

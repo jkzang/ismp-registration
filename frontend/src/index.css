@@ -2292,6 +2292,116 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
   background: var(--accent-soft);
 }
 
+.import-details {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.import-details-tab {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.import-details-tab .link-button {
+  margin-left: auto;
+  font-size: 13px;
+}
+
+.import-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.import-field input {
+  width: min(280px, 100%);
+  height: 40px;
+  padding: 0 12px;
+}
+
+.import-details-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* First plan explanation, shown once after an import */
+
+.first-plan-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+}
+
+.first-plan-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.first-plan-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.first-plan-body h2,
+.first-plan-body p {
+  margin: 0;
+}
+
+.first-plan-body section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.first-plan-body h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.first-plan-list,
+.first-plan-groups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.first-plan-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.first-plan-list .muted {
+  font-weight: 400;
+  text-align: right;
+}
+
+.first-plan-groups li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+}
+
 /* Mentors */
 
 .mentors {

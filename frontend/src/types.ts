@@ -50,7 +50,8 @@ export type SheetRows = {
   warnings: string[]
 }
 
-export type NewSheet = SheetRows & { spreadsheet_id: string; tab_id: number }
+/** The start time and capacity are asked for at import. */
+export type NewSheet = SheetRows & { spreadsheet_id: string; tab_id: number; starts_at: string; capacity: number }
 
 export type ResyncResult = { sheet: Sheet; added: number; updated: number; removed: number }
 
@@ -97,7 +98,8 @@ export type SeatingPlan = {
   excluded_mentor_ids: number[]
   students: PlanStudent[]
   mentors: PlanMentor[]
-  expected: { gender: Gender; level: TableLevel; count: number }[]
+  /** `tables_wanted` is how many tables that turnout calls for, before the limit of one per mentor. */
+  expected: { gender: Gender; level: TableLevel; count: number; tables_wanted: number }[]
   show_up_rates: Partial<Record<ContactStatus, number>>
   updated_at: string
 }

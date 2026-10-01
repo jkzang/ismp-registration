@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useLocation, useNavigate, useParams } from 'react-router'
 import { api, ApiError, errorMessage } from '../api'
 import { useApp } from '../appContext'
 import { CheckInPanel } from '../components/CheckInPanel'
+import { FirstPlanDialog } from '../components/FirstPlanDialog'
 import { CheckIcon, CloseIcon, PencilIcon, RefreshIcon, WarningIcon } from '../components/icons'
 import { TablesBoard } from '../components/TablesBoard'
 import { useAttendanceSync, type AttendanceStatus } from '../attendanceSync'
@@ -253,6 +254,9 @@ export function SheetPage() {
   const { config, refreshSheets } = useApp()
   const { notify } = useUndo()
   const navigate = useNavigate()
+  const location = useLocation()
+  // Set by the import; cleared when the explanation is closed, so a reload doesn't bring it back.
+  const explainFirstPlan = Boolean((location.state as { firstPlan?: boolean } | null)?.firstPlan)
   const [sheet, setSheet] = useState<Sheet | null>(null)
   const [plan, setPlan] = useState<SeatingPlan | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -399,6 +403,13 @@ export function SheetPage() {
         />
         <TablesBoard sheetId={sheet.id} plan={plan} setPlan={setPlan} />
       </div>
+      {explainFirstPlan && (
+        <FirstPlanDialog
+          sheet={sheet}
+          plan={plan}
+          onClose={() => navigate(location.pathname, { replace: true, state: null })}
+        />
+      )}
     </div>
   )
 }

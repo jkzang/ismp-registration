@@ -2,14 +2,10 @@ import { useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router'
 import { api, errorMessage } from '../api'
 import { useApp } from '../appContext'
+import { initials } from '../initials'
 import { sheetName, type Sheet } from '../types'
 import { ConfirmDialog } from './ConfirmDialog'
 import { MentorIcon, PlusIcon, SidebarIcon, TrashIcon } from './icons'
-
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/)
-  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?'
-}
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 

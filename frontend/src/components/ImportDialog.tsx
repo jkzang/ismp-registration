@@ -11,6 +11,7 @@ import { CloseIcon, SheetIcon } from './icons'
 type Step =
   | { kind: 'start' }
   | { kind: 'tabs'; file: PickedFile; title: string; tabs: Tab[] }
+  | { kind: 'details'; file: PickedFile; title: string; tabs: Tab[]; tab: Tab }
 
 /** How the dialog opens: with the file just picked in Google's Picker, or with why picking failed. */
 export type ImportStart = { file: PickedFile } | { error: string }
@@ -28,6 +29,9 @@ export function ImportDialog({ start, onClose, onImported }: {
   const [step, setStep] = useState<Step>({ kind: 'start' })
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>('error' in start ? start.error : null)
+  // Kept across a change of tab or spreadsheet, so they're only typed once.
+  const [startsAt, setStartsAt] = useState('')
+  const [capacity, setCapacity] = useState('')
 
   useEffect(() => {
     dialogRef.current?.showModal()
@@ -46,7 +50,7 @@ export function ImportDialog({ start, onClose, onImported }: {
   }
 
   // Reads the tab and imports it as is: the header row and columns are found automatically.
-  async function importTab(file: PickedFile, title: string, tabs: Tab[], tab: Tab) {
+  async function importTab(file: PickedFile, title: string, tabs: Tab[], tab: Tab, event: { starts_at: string; capacity: number }) {
     const [values, database] = await Promise.all([
       getTabValues(config, file.id, tab.title),
       readDatabaseTab(config, file.id, tabs, tab.id),
@@ -68,6 +72,7 @@ export function ImportDialog({ start, onClose, onImported }: {
       field_map: parsed.fieldMap,
       rows: parsed.rows,
       warnings: importWarnings(parsed),
+      ...event,
     })
     if (fills.length) {
       notify(
@@ -79,13 +84,11 @@ export function ImportDialog({ start, onClose, onImported }: {
     onImported(sheet)
   }
 
-  // A spreadsheet with a single tab is imported right away.
+  // A spreadsheet with a single tab skips the choice of tab.
   async function openFile(file: PickedFile) {
     const { title, tabs } = await getSpreadsheet(config, file.id)
-    if (tabs.length === 1) {
-      setStep({ kind: 'start' })
-      await importTab(file, title, tabs, tabs[0])
-    } else setStep({ kind: 'tabs', file, title, tabs })
+    if (tabs.length === 1) setStep({ kind: 'details', file, title, tabs, tab: tabs[0] })
+    else setStep({ kind: 'tabs', file, title, tabs })
   }
 
   useEffect(() => {
@@ -108,10 +111,21 @@ export function ImportDialog({ start, onClose, onImported }: {
       if (file) await openFile(file)
     })
 
-  const chooseTab = (tab: Tab) =>
-    run('Importing…', async () => {
-      if (step.kind === 'tabs') await importTab(step.file, step.title, step.tabs, tab)
-    })
+  function chooseTab(tab: Tab) {
+    setError(null)
+    if (step.kind === 'tabs') setStep({ ...step, kind: 'details', tab })
+  }
+
+  function submitDetails(e: React.FormEvent) {
+    e.preventDefault()
+    if (step.kind !== 'details') return
+    const people = Number(capacity)
+    const starts = new Date(startsAt)
+    // The inputs are `required` too; this catches what the browser's own check lets through.
+    if (!startsAt || Number.isNaN(starts.getTime())) return setError('Enter the date and time of the event.')
+    if (!Number.isInteger(people) || people < 1) return setError('Enter the event’s capacity as a whole number, 1 or more.')
+    run('Importing…', () => importTab(step.file, step.title, step.tabs, step.tab, { starts_at: starts.toISOString(), capacity: people }))
+  }
 
   return (
     <dialog ref={dialogRef} className="import-dialog" onClose={() => {
@@ -148,7 +162,7 @@ export function ImportDialog({ start, onClose, onImported }: {
             <ul className="tab-list">
               {step.tabs.map((tab) => (
                 <li key={tab.id}>
-                  <button type="button" onClick={() => chooseTab(tab)} disabled={!!busy}>
+                  <button type="button" onClick={() => chooseTab(tab)}>
                     <span>{tab.title}</span>
                     <span className="muted">{tab.rows} rows</span>
                   </button>
@@ -156,6 +170,50 @@ export function ImportDialog({ start, onClose, onImported }: {
               ))}
             </ul>
           </>
+        )}
+
+        {step.kind === 'details' && (
+          <form className="import-details" onSubmit={submitDetails}>
+            <p className="import-details-tab">
+              Importing <strong>{step.tab.title}</strong> <span className="muted">· {step.tab.rows} rows</span>
+              {step.tabs.length > 1 && (
+                <button type="button" className="link-button" onClick={() => setStep({ ...step, kind: 'tabs' })} disabled={!!busy}>
+                  Change tab
+                </button>
+              )}
+            </p>
+            <label className="import-field">
+              <span>When is the event?</span>
+              <input
+                type="datetime-local"
+                value={startsAt}
+                onChange={(e) => setStartsAt(e.target.value)}
+                required
+                autoFocus
+                disabled={!!busy}
+              />
+            </label>
+            <label className="import-field">
+              <span>How many people can it hold?</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                value={capacity}
+                onChange={(e) => setCapacity(e.target.value)}
+                placeholder="Capacity"
+                required
+                disabled={!!busy}
+              />
+            </label>
+            <p className="muted">Both can be changed after the import, at the top of the sheet’s page.</p>
+            <div className="import-details-actions">
+              <button type="submit" className="primary" disabled={!!busy}>
+                Import
+              </button>
+            </div>
+          </form>
         )}
 
         {busy && <p className="muted">{busy}</p>}

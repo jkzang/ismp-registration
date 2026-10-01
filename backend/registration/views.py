@@ -196,10 +196,15 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
         with transaction.atomic():
             sheet = models.SignupSheet.objects.create(
                 chapter=self.chapter(), imported_by=request.user,
-                **{k: data[k] for k in ('spreadsheet_id', 'spreadsheet_title', 'tab_id', 'tab_title', 'field_map', 'warnings')},
+                **{k: data[k] for k in (
+                    'spreadsheet_id', 'spreadsheet_title', 'tab_id', 'tab_title', 'field_map', 'warnings',
+                    'starts_at', 'capacity',
+                )},
             )
             replace_rows(sheet, data['rows'])
-            models.SeatingPlan.objects.create(sheet=sheet)
+            # A first plan right away, so the organizer lands on tables rather than an empty board.
+            students, mentors = seating.attendees(sheet)
+            models.SeatingPlan.objects.create(sheet=sheet, tables=seating.generate(students, mentors, []))
         return Response(self.get_serializer(self.get_queryset().get(pk=sheet.pk)).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['put'])

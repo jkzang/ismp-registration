@@ -28,7 +28,8 @@ def row(key, name, gender='', level='', status='confirmed', nickname=''):
 def import_body(rows, **extra):
     return {
         'spreadsheet_id': 'abcdefghij1234567890', 'spreadsheet_title': 'Fall Kickoff', 'tab_id': 0,
-        'tab_title': 'Form Responses 1', 'field_map': {'name': 'First & Last Name'}, 'rows': rows, **extra,
+        'tab_title': 'Form Responses 1', 'field_map': {'name': 'First & Last Name'}, 'rows': rows,
+        'starts_at': '2026-10-01T19:00:00Z', 'capacity': 60, **extra,
     }
 
 
@@ -194,6 +195,30 @@ class ImportTests(ApiTestBase):
         # Ben left the sheet and never came; Cat left it but already checked in, so she stays.
         self.assertEqual(sorted(sheet.signups.values_list('name', flat=True)), ['Amy Lin', 'Cat', 'Dan'])
         self.assertEqual(response.data['sheet']['tab_title'], 'Renamed')
+
+    def test_import_needs_the_event_start_and_capacity(self):
+        for missing in ('starts_at', 'capacity'):
+            body = import_body([row('k1', 'Amy')])
+            del body[missing]
+            response = self.client.post('/api/sheets/', body, format='json')
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, missing)
+            self.assertIn(missing, response.data)
+        response = self.client.post('/api/sheets/', import_body([row('k1', 'Amy')], capacity=0), format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        response = self.client.post('/api/sheets/', import_body([row('k1', 'Amy')], capacity=45), format='json')
+        self.assertEqual((response.data['capacity'], response.data['starts_at']), (45, '2026-10-01T19:00:00Z'))
+
+    def test_import_plans_the_tables_right_away(self):
+        mentor = models.Mentor.objects.create(chapter=self.chapter, name='Mia', gender='female')
+        rows = [row(f'k{i}', f'Student {i}', 'female', 'grad') for i in range(12)]  # 10.2 expected
+        sheet = self.import_sheet(rows)
+        data = self.client.get(f'/api/sheets/{sheet.id}/plan/').data
+        # Two tables wanted, but one mentor means one table.
+        self.assertEqual([(t['gender'], t['level']) for t in data['tables']], [('female', 'grad')])
+        self.assertEqual(data['tables'][0]['members'], [{'kind': 'mentor', 'id': mentor.id, 'locked': False}])
+        wanted = {(e['gender'], e['level']): e['tables_wanted'] for e in data['expected']}
+        self.assertEqual(wanted[('female', 'grad')], 2)
+        self.assertEqual(wanted[('male', 'grad')], 0)
 
     def test_warnings_are_kept_until_the_next_sync(self):
         response = self.client.post('/api/sheets/', import_body([row('k1', 'Amy')], warnings=['No Gender column found.']), format='json')
