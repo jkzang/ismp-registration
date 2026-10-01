@@ -110,7 +110,7 @@ class TableMemberSerializer(serializers.Serializer):
 class TableSerializer(serializers.Serializer):
     id = serializers.CharField(max_length=32)
     name = serializers.CharField(max_length=60)
-    gender = serializers.ChoiceField(choices=models.Gender.choices, allow_blank=True, default='')
+    gender = serializers.ChoiceField(choices=[models.FEMALE, models.MALE, 'coed'], allow_blank=True, default='')
     level = serializers.ChoiceField(choices=[models.UNDERGRAD, models.GRAD], allow_blank=True, default='')
     members = TableMemberSerializer(many=True, max_length=200)
 

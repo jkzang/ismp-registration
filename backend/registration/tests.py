@@ -1,6 +1,7 @@
 import random
 import shutil
 import tempfile
+from collections import Counter
 from datetime import timedelta
 from pathlib import Path
 from unittest import mock
@@ -12,7 +13,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
 
-from . import models
+from . import models, seating
 from .google_auth import NotAllowed, verify_credential
 
 
@@ -547,6 +548,135 @@ class TablePlanningTests(SeatingBase):
         data = self.plan()
         self.assertEqual(self.seated_students(data), [[a.id]])
         self.assertEqual(data['tables'][0]['members'], [{'kind': 'student', 'id': a.id, 'locked': False}])
+
+
+class CoedTableTests(SeatingBase):
+    def simulate(self, attendance):
+        return self.client.post(
+            f'/api/sheets/{self.sheet.id}/plan/simulate/', {'attendance': attendance}, format='json',
+        ).data
+
+    def by_group(self, data):
+        genders = {s['id']: s['gender'] for s in data['students']}
+        names = {m['id']: m['name'] for m in data['mentors']} if 'mentors' in data else {}
+        return [
+            (
+                t['gender'],
+                Counter(genders[m['id']] for m in t['members'] if m['kind'] == 'student'),
+                sorted(names.get(m['id'], m['id']) for m in t['members'] if m['kind'] == 'mentor'),
+            )
+            for t in data['tables']
+        ]
+
+    def test_simulation_moves_girls_past_three_per_mentor_to_a_guys_table_with_room(self):
+        self.girls = self.add_students(6, 'female', 'undergrad')
+        self.guys = self.add_students(3, 'male', 'undergrad')
+        self.add_mentor('Mia Stone', 'female')
+        self.add_mentor('Tom Lee', 'male')
+        self.add_mentor('Sam Park', 'male')
+        self.generate()
+        data = self.simulate(9)
+        self.assertEqual(data['rearranged'], {'coed_tables': 1, 'students_moved': 3, 'mentors_moved': 0})
+        self.assertEqual(
+            [(gender, dict(counts)) for gender, counts, _ in self.by_group(data)],
+            [('female', {'female': 3}), ('coed', {'male': 3, 'female': 3})],
+        )
+        # Nothing is saved.
+        self.assertEqual(self.groups(self.plan()), [('female', 'undergrad'), ('male', 'undergrad')])
+
+    def test_no_coed_table_when_every_table_is_within_three_per_mentor(self):
+        self.add_students(3, 'female', 'undergrad')
+        self.add_students(3, 'male', 'undergrad')
+        self.add_mentor('Mia Stone', 'female')
+        self.add_mentor('Tom Lee', 'male')
+        self.generate()
+        data = self.simulate(6)
+        self.assertEqual(data['rearranged'], {'coed_tables': 0, 'students_moved': 0, 'mentors_moved': 0})
+        self.assertEqual([t['gender'] for t in data['tables']], ['female', 'male'])
+
+    def test_no_coed_table_for_a_single_guy_or_across_levels(self):
+        self.add_students(6, 'female', 'undergrad')
+        self.add_students(1, 'male', 'undergrad')
+        self.add_students(3, 'male', 'grad')
+        self.add_mentor('Mia Stone', 'female')
+        self.add_mentor('Tom Lee', 'male')
+        self.add_mentor('Sam Park', 'male')
+        self.generate()
+        data = self.simulate(10)
+        self.assertEqual(data['rearranged']['coed_tables'], 0)
+
+    def test_couple_is_brought_together_at_the_coed_table(self):
+        self.add_students(12, 'female', 'undergrad')
+        self.add_students(3, 'male', 'undergrad')
+        for name, gender in (('Mia Stone', 'female'), ('Ann Lee', 'female'), ('Tom Lee', 'male'), ('Sam Park', 'male')):
+            self.add_mentor(name, gender)
+        data = self.generate()
+        # Two girls tables with a mentor each, and one guys table with both men.
+        self.assertEqual(self.groups(data), [('female', 'undergrad')] * 2 + [('male', 'undergrad')])
+        data = {**self.simulate(15), 'mentors': data['mentors']}
+        coed = next(group for group in self.by_group(data) if group[0] == 'coed')
+        # Ann can't join Tom: her girls table would be left without a mentor.
+        self.assertEqual(coed[2], ['Sam Park', 'Tom Lee'])
+        self.assertEqual(data['rearranged']['mentors_moved'], 0)
+
+    def test_couple_swaps_in_when_the_coed_table_has_someone_to_trade(self):
+        tables = [
+            {'id': 'a', 'name': 'A', 'gender': 'coed', 'level': 'undergrad', 'members': [
+                {'kind': 'mentor', 'id': 1, 'locked': False}, {'kind': 'mentor', 'id': 2, 'locked': False},
+            ]},
+            {'id': 'b', 'name': 'B', 'gender': 'female', 'level': 'undergrad', 'members': [
+                {'kind': 'mentor', 'id': 3, 'locked': False},
+            ]},
+        ]
+        mentors = [
+            {'id': 1, 'name': 'Tom Lee', 'gender': 'male'}, {'id': 2, 'name': 'Mia Stone', 'gender': 'female'},
+            {'id': 3, 'name': 'Ann Lee', 'gender': 'female'},
+        ]
+        self.assertEqual(seating.couples(mentors), {1: 3, 3: 1})
+        result = seating.rebalance(tables, {}, mentors)
+        self.assertEqual(result['mentors_moved'], 2)
+        self.assertEqual([[m['id'] for m in t['members']] for t in tables], [[1, 3], [2]])
+
+    def test_people_really_checked_in_are_not_moved(self):
+        girls = self.add_students(6, 'female', 'undergrad')
+        self.add_students(3, 'male', 'undergrad')
+        self.add_mentor('Mia Stone', 'female')
+        self.add_mentor('Tom Lee', 'male')
+        self.add_mentor('Sam Park', 'male')
+        self.generate()
+        for girl in girls:
+            self.check_in(girl)
+        data = self.simulate(9)
+        self.assertEqual(data['rearranged']['students_moved'], 0)
+
+    def test_coed_table_can_be_saved_and_seats_both_at_check_in(self):
+        girls = self.add_students(4, 'female', 'undergrad')
+        guys = self.add_students(4, 'male', 'undergrad')
+        self.add_mentor('Ann Lee', 'female')
+        self.add_mentor('Tom Lee', 'male')
+        data = self.generate()
+        ann, tom = [m for t in data['tables'] for m in t['members']]
+        coed = {**data['tables'][0], 'gender': 'coed', 'members': [ann, tom]}
+        self.assertEqual(self.save_plan({'tables': [coed]}).status_code, status.HTTP_200_OK)
+        for person in (girls[0], girls[1], girls[2], guys[0], guys[1], guys[2], girls[3], guys[3]):
+            self.assertEqual(self.check_in(person)['table']['id'], coed['id'])
+        seated = self.seated_students(self.plan())[0]
+        # Two seats were held for the guys while only girls had come.
+        self.assertEqual(len(seated), 8)
+
+    def test_coed_table_holds_two_seats_for_each_gender(self):
+        table = {'id': 'a', 'gender': 'coed', 'level': 'undergrad', 'members': [
+            {'kind': 'mentor', 'id': 1}, {'kind': 'mentor', 'id': 2},
+            *[{'kind': 'student', 'id': i} for i in range(10, 14)],
+        ]}
+        girls_table = {'id': 'b', 'gender': 'female', 'level': 'undergrad', 'members': [
+            {'kind': 'mentor', 'id': 3}, *[{'kind': 'student', 'id': i} for i in range(20, 25)],
+        ]}
+        genders = {i: 'female' for i in range(10, 25)}
+        girl = {'gender': 'female', 'level': 'undergrad'}
+        guy = {'gender': 'male', 'level': 'undergrad'}
+        self.assertEqual(seating.pick_table([table, girls_table], girl, genders), 1)
+        self.assertEqual(seating.pick_table([table, girls_table], guy, genders), 0)
 
 
 class NotAStudentTests(SeatingBase):

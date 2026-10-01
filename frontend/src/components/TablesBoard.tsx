@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { api, errorMessage } from '../api'
 import {
-  type Gender,
   type TableLevel,
   type PlanMentor,
   type PlanStudent,
@@ -32,6 +31,9 @@ const GROUP_OPTIONS: { value: string; label: string }[] = [
   { value: 'male:undergrad', label: 'Guys UG' },
   { value: 'male:grad', label: 'Guys Grad' },
   { value: 'male:', label: 'Guys Any' },
+  { value: 'coed:undergrad', label: 'Coed UG' },
+  { value: 'coed:grad', label: 'Coed Grad' },
+  { value: 'coed:', label: 'Coed Any' },
   { value: ':', label: 'No group' },
 ]
 
@@ -50,11 +52,18 @@ function newTableId() {
 /** Only what breaks the separation rules. */
 function tableWarnings(table: SeatingTable, students: PlanStudent[], mentors: PlanMentor[]): string[] {
   const warnings: string[] = []
-  const genders = new Set([table.gender, ...students.map((s) => s.gender)].filter(Boolean))
+  const coed = table.gender === 'coed'
+  const genders = new Set([coed ? '' : table.gender, ...students.map((s) => s.gender)].filter(Boolean))
   const levels = new Set(students.map((s) => s.level).filter((l) => l === 'undergrad' || l === 'grad'))
-  if (genders.size > 1) warnings.push('Guys and girls mixed')
+  if (genders.size > 1 && !coed) warnings.push('Guys and girls mixed')
   if (levels.size > 1) warnings.push('Undergrad and grad mixed')
   if (mentors.length === 0 && students.length > 0) warnings.push('No mentor')
+  if (coed) {
+    // Nobody should be the only one of their gender at the table.
+    if (students.filter((s) => s.gender === 'female').length === 1) warnings.push('Only one girl')
+    if (students.filter((s) => s.gender === 'male').length === 1) warnings.push('Only one guy')
+    return warnings
+  }
   const gender = genders.size === 1 ? [...genders][0] : null
   if (mentors.some((m) => genders.size > 1 || (gender && m.gender !== gender))) warnings.push('Mentor gender mismatch')
   return warnings
@@ -99,7 +108,7 @@ function PersonChip({ member, student, mentor, table, fixed = false, onToggleLoc
           {student?.nickname && <span className="person-nick"> ({student.nickname})</span>}
         </span>
         <span className="person-tags">
-          <Tag title={person.gender || 'Gender unknown'} off={!!table?.gender && person.gender !== table.gender}>
+          <Tag title={person.gender || 'Gender unknown'} off={!!table?.gender && table.gender !== 'coed' && person.gender !== table.gender}>
             {gender}
           </Tag>
           {student && (
@@ -227,6 +236,17 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
     guessed: plan.students.filter((s, i) => s.gender !== savedPlan.students[i]?.gender).length,
   }
 
+  const moves = simulation?.rearranged
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+  const rearranged =
+    moves && (moves.coed_tables > 0 || moves.mentors_moved > 0)
+      ? [
+          moves.coed_tables > 0 && `${plural(moves.coed_tables, 'table')} made coed to ease ones past ${IDEAL_PER_MENTOR} per mentor`,
+          moves.students_moved > 0 && `${plural(moves.students_moved, 'student')} moved`,
+          moves.mentors_moved > 0 && `${plural(moves.mentors_moved, 'mentor')} moved to seat a couple together`,
+        ].filter(Boolean).join(', ')
+      : ''
+
   // Undo and redo put the whole board back as it was at that step. Its time tells the server which
   // check-ins came after, so seats handed out since then are kept.
   const restore = (previous: SeatingPlan) => async () =>
@@ -238,9 +258,12 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
   }
 
   /** `label` finishes "Undid …" and "Redid …". */
-  async function save(tables: SeatingTable[], excludedIds: number[], label: string) {
-    if (simulation) return
-    const previous = plan
+  function save(tables: SeatingTable[], excludedIds: number[], label: string) {
+    if (!simulation) commit(tables, excludedIds, label)
+  }
+
+  async function commit(tables: SeatingTable[], excludedIds: number[], label: string) {
+    const previous = savedPlan
     setPlan({ ...previous, tables, excluded_mentor_ids: excludedIds })
     try {
       const next = await api.savePlan(sheetId, tables, excludedIds, previous.updated_at)
@@ -281,7 +304,7 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
   }
 
   function setGroup(tableId: string, group: string) {
-    const [gender, level] = group.split(':') as [Gender | '', TableLevel | '']
+    const [gender, level] = group.split(':') as [SeatingTable['gender'], TableLevel | '']
     const table = plan.tables.find((t) => t.id === tableId)!
     save(plan.tables.map((t) => (t.id === tableId ? { ...t, gender, level } : t)), plan.excluded_mentor_ids, `${table.name}’s group change`)
   }
@@ -349,6 +372,19 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
       document.removeEventListener('keydown', onKey)
     }
   }, [settingAttendance])
+
+  /** Makes the simulated arrangement the real one: its coed tables and where its mentors sit.
+   * The pretend students go; the ones really seated are where they were. */
+  function keepSimulation() {
+    if (!simulation) return
+    const reallySeated = new Set(savedPlan.tables.flatMap((t) => t.members.filter((m) => m.kind === 'student').map((m) => m.id)))
+    const tables = simulation.tables.map((t) => ({
+      ...t,
+      members: t.members.filter((m) => m.kind === 'mentor' || reallySeated.has(m.id)),
+    }))
+    setSimulation(null)
+    commit(tables, savedPlan.excluded_mentor_ids, 'keeping the simulated tables')
+  }
 
   const chipFor = (member: TableMember, tableId?: string) => (
     <PersonChip
@@ -519,8 +555,19 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
             {unseatedStudents.length > 0 && ` · ${unseatedStudents.length} with no table to sit at`}
             {simulated.over > 0 && ` · ${simulated.over} ${simulated.over === 1 ? 'table' : 'tables'} past ${MAX_STUDENTS} students`}
             {simulated.guessed > 0 && ` · ${simulated.guessed} with no gender on the sheet given one at random`}
+            {rearranged && ` · ${rearranged}`}
             . Nothing is saved.
           </span>
+          {rearranged && (
+            <button
+              type="button"
+              className="primary"
+              onClick={keepSimulation}
+              title="Make these the real tables: the coed tables and where the mentors sit. The pretend students aren't kept."
+            >
+              Keep these tables
+            </button>
+          )}
           <button type="button" onClick={() => setSimulation(null)}>
             Back to the plan
           </button>

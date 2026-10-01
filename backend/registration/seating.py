@@ -7,6 +7,11 @@ tables are at 3 per mentor, students spill into the other level's, and then spre
 the gender's tables. Nobody starts a table alone, so once those are full, check-in squeezes
 students in past 6 rather than open one.
 
+A table can also be coed within its level, ideally led by a couple (a man and a woman among the
+mentors with the same last name), with at least 2 students of each gender. The plan never makes
+one: the simulation does, when a table is past 3 per mentor and one of the other gender has room
+(see `rebalance`), and the organizer can keep that arrangement or set a table to coed by hand.
+
 Nobody knows for sure who will come, so students aren't seated ahead of time. Tables are planned
 from expected turnout (each sign-up weighted by how often people with that contact status show
 up) and each gets a group and mentors. Check-in then seats each student at a table of their group.
@@ -21,7 +26,8 @@ from rest_framework.exceptions import ValidationError
 from . import models
 from .models import FEMALE, GRAD, MALE, OTHER, UNDERGRAD
 
-GENDER_ORDER, LEVEL_ORDER = [FEMALE, MALE, ''], [UNDERGRAD, GRAD, '']
+COED = 'coed'  # a table's gender only: it takes both
+GENDER_ORDER, LEVEL_ORDER = [FEMALE, MALE, COED, ''], [UNDERGRAD, GRAD, '']
 STUDENT_LEVELS = (UNDERGRAD, GRAD)
 
 # Bigger groups let students meet each other: tables seat 8, two mentors and 6 students. The board
@@ -29,6 +35,8 @@ STUDENT_LEVELS = (UNDERGRAD, GRAD)
 MENTORS_PER_TABLE = 2
 # What a table is filled to before students spill into the other level's tables.
 IDEAL_PER_MENTOR = 3
+# A coed table should have at least this many students of each gender, so nobody is the only one.
+COED_MIN_PER_GENDER = 2
 MAX_STUDENTS_PER_TABLE = 6
 
 # Share of people with each contact status who show up (the organizers' estimates); any other status is 0.
@@ -125,11 +133,15 @@ def _capacity(table):
     return min(MAX_STUDENTS_PER_TABLE, IDEAL_PER_MENTOR * _count(table, 'mentor'))
 
 
+def _gender_counts(table, genders):
+    return Counter(genders.get(m['id'], '') for m in table['members'] if m['kind'] == 'student')
+
+
 def _has_room(table, kind):
     return _count(table, kind) < (MAX_STUDENTS_PER_TABLE if kind == 'student' else MENTORS_PER_TABLE)
 
 
-def pick_table(tables, student):
+def pick_table(tables, student, genders=None):
     """Index of the table to seat a student at on check-in, or None if there's no table for their gender.
 
     Keeps their level's tables as even as possible, up to 3 students per mentor each: the one with
@@ -138,8 +150,13 @@ def pick_table(tables, student):
     into the other level's tables the same way. Once those are too, they spread evenly across all
     their gender's tables: ones with a mentor first, up to 6 students. Never the other gender's
     table. If every table is full (6 students), they take an extra seat at the least-full one: a
-    new table would leave them sitting alone."""
-    same_gender = [i for i, t in enumerate(tables) if student['gender'] and t.get('gender') == student['gender']]
+    new table would leave them sitting alone.
+
+    A coed table counts as a table of their gender. It holds 2 seats for each gender, and one where
+    someone of their gender sits alone comes first. `genders` is the gender of each seated student
+    by id, needed only when there are coed tables."""
+    genders = genders or {}
+    same_gender = [i for i, t in enumerate(tables) if student['gender'] and t.get('gender') in (student['gender'], COED)]
     if not same_gender:
         return None
     # Unknown or Other level: any table of their gender will do.
@@ -149,15 +166,153 @@ def pick_table(tables, student):
     ]
     other_level = [i for i in same_gender if i not in own_level]
 
+    def own_gender_count(i):
+        return _gender_counts(tables[i], genders)[student['gender']] if tables[i].get('gender') == COED else None
+
+    def open_below(i, limit):
+        seated, own = _count(tables[i], 'student'), own_gender_count(i)
+        if seated >= limit:
+            return False
+        if own is None or own < COED_MIN_PER_GENDER:
+            return True
+        return seated + 1 + max(0, COED_MIN_PER_GENDER - (seated - own)) <= limit
+
     def emptiest(indexes):
-        return min(indexes, key=lambda i: (_count(tables[i], 'student'), -_count(tables[i], 'mentor'), i))
+        return min(indexes, key=lambda i: (
+            own_gender_count(i) != 1, _count(tables[i], 'student'), -_count(tables[i], 'mentor'), i,
+        ))
 
     for group in (own_level, other_level):
-        below_capacity = [i for i in group if _count(tables[i], 'student') < _capacity(tables[i])]
+        below_capacity = [i for i in group if open_below(i, _capacity(tables[i]))]
         if below_capacity:
             return emptiest(below_capacity)
-    with_room = [i for i in same_gender if _has_room(tables[i], 'student')]
+    with_room = [i for i in same_gender if open_below(i, MAX_STUDENTS_PER_TABLE)]
     return emptiest([i for i in with_room if _count(tables[i], 'mentor')] or with_room or same_gender)
+
+
+def couples(mentors):
+    """{mentor id: their spouse's id}. A couple is a man and a woman with the same last name,
+    when they're the only man and the only woman with it."""
+    by_last_name = defaultdict(list)
+    for m in mentors:
+        words = m['name'].split()
+        if len(words) > 1:
+            by_last_name[words[-1].casefold()].append(m)
+    spouse = {}
+    for family in by_last_name.values():
+        women = [m['id'] for m in family if m['gender'] == FEMALE]
+        men = [m['id'] for m in family if m['gender'] == MALE]
+        if len(women) == 1 and len(men) == 1:
+            spouse[women[0]], spouse[men[0]] = men[0], women[0]
+    return spouse
+
+
+def rebalance(tables, genders, mentors, fixed=frozenset()):
+    """A last-minute rearrangement that makes coed tables where that evens out students per mentor.
+    Changes `tables` in place and returns what it did.
+
+    While a table is past 3 students per mentor, its extra students of one gender move to a table
+    of its level for the other gender (or a coed one) that is below its own 3 per mentor. That
+    table becomes coed. Tables with half of a couple are picked first. A table is only made coed if
+    it ends up with at least 2 students of each gender, and nobody is left the only one of their
+    gender at the table they came from. Then each couple with one half at a coed table is brought
+    together there, when that leaves no table worse off.
+
+    `genders` is each seated student's gender by id. Students in `fixed` (really checked in, so
+    already told their table) and anyone locked stay put."""
+    spouse = couples(mentors)
+    mentor_gender = {m['id']: m['gender'] for m in mentors}
+    made_coed, students_moved, mentors_moved = set(), 0, 0
+
+    def mentors_at(table):
+        return [m for m in table['members'] if m['kind'] == 'mentor']
+
+    def excess(table):
+        return _count(table, 'student') - _capacity(table)
+
+    def move_for(donor, gender):
+        """(receiver, students to move) relieving `donor` of students of `gender`, or None."""
+        can_go = [
+            m for m in donor['members']
+            if m['kind'] == 'student' and not m.get('locked') and m['id'] not in fixed and genders.get(m['id']) == gender
+        ]
+        at_donor = _gender_counts(donor, genders)[gender]
+        options = []
+        for index, receiver in enumerate(tables):
+            if receiver is donor or receiver['gender'] not in (COED, MALE if gender == FEMALE else FEMALE):
+                continue
+            if donor['level'] and receiver['level'] and donor['level'] != receiver['level']:
+                continue
+            counts, seated = _gender_counts(receiver, genders), _count(receiver, 'student')
+            # Becoming coed needs 2 of the gender already there too.
+            if receiver['gender'] != COED and seated - counts[gender] < COED_MIN_PER_GENDER:
+                continue
+            most = min(-excess(receiver), len(can_go))
+            fewest = max(1, COED_MIN_PER_GENDER - counts[gender])
+            if most < fewest:
+                continue
+            count = max(fewest, min(excess(donor), most))
+            if at_donor - count == 1:  # don't leave one behind alone
+                if count < most:
+                    count += 1
+                elif count > fewest:
+                    count -= 1
+                else:
+                    continue
+            half_of_couple = any(m['id'] in spouse for m in mentors_at(receiver))
+            options.append(((not half_of_couple, seated / _count(receiver, 'mentor'), index), receiver, can_go[-count:]))
+        return min(options, key=lambda o: o[0])[1:] if options else None
+
+    def next_move():
+        # The most crowded table that can be relieved goes first.
+        for donor in sorted((t for t in tables if excess(t) > 0), key=lambda t: -excess(t)):
+            for gender in (FEMALE, MALE):
+                move = move_for(donor, gender)
+                if move:
+                    return (donor, *move)
+        return None
+
+    # Each move brings a table closer to its 3 per mentor without taking another past its own.
+    while move := next_move():
+        donor, receiver, movers = move
+        donor['members'] = [m for m in donor['members'] if m not in movers]
+        receiver['members'] = receiver['members'] + movers
+        receiver['gender'] = COED
+        made_coed.add(receiver['id'])
+        students_moved += len(movers)
+
+    def swap(table, old, other, new):
+        table['members'] = [new if m is old else m for m in table['members']]
+        other['members'] = [old if m is new else m for m in other['members']]
+
+    for table in tables:
+        if table['gender'] != COED:
+            continue
+        for mentor in mentors_at(table):
+            other = table_of(tables, 'mentor', spouse.get(mentor['id']))
+            if other is None or other is table:
+                continue
+            partner = next(m for m in mentors_at(other) if m['id'] == spouse[mentor['id']])
+            if partner.get('locked'):
+                continue
+            partner_gender = mentor_gender[partner['id']]
+            # Whoever makes way for the partner takes the partner's old seat, if that table takes them.
+            makes_way = next((
+                m for m in mentors_at(table)
+                if m is not mentor and not m.get('locked') and m['id'] not in spouse
+                and (mentor_gender[m['id']] == partner_gender or other['gender'] == COED)
+            ), None)
+            if makes_way:
+                swap(table, makes_way, other, partner)
+                mentors_moved += 2
+            elif _has_room(table, 'mentor') and _count(other, 'student') <= IDEAL_PER_MENTOR * (_count(other, 'mentor') - 1):
+                other['members'] = [m for m in other['members'] if m is not partner]
+                table['members'] = table['members'] + [partner]
+                mentors_moved += 1
+            else:
+                continue
+            break
+    return {'coed_tables': len(made_coed), 'students_moved': students_moved, 'mentors_moved': mentors_moved}
 
 
 def group_of(students):
@@ -215,7 +370,7 @@ def generate(students, mentors, existing_tables, rng=None):
     for m in unplaced_mentors:
         candidates = [
             i for i, t in enumerate(tables)
-            if (not m['gender'] or t['gender'] == m['gender']) and _has_room(t, 'mentor')
+            if (not m['gender'] or t['gender'] in (m['gender'], COED)) and _has_room(t, 'mentor')
         ]
         if not candidates:
             continue  # no table of their gender with room: leave them for the organizer to place
@@ -223,9 +378,10 @@ def generate(students, mentors, existing_tables, rng=None):
         index = min(candidates, key=lambda i: (_count(tables[i], 'mentor'), i))
         tables[index]['members'].append({'kind': 'mentor', 'id': m['id'], 'locked': False})
 
+    genders = {s['id']: s['gender'] for s in students}
     for s in students:
         if s['checked_in'] and ('student', s['id']) not in placed:
-            index = pick_table(tables, s)
+            index = pick_table(tables, s, genders)
             if index is not None:
                 tables[index]['members'].append({'kind': 'student', 'id': s['id'], 'locked': False})
     return tables
@@ -247,18 +403,20 @@ def _who_comes(students, attendance, rng):
     return arrivals
 
 
-def simulate(students, tables, capacity=None, attendance=None, rng=None):
+def simulate(students, mentors, tables, capacity=None, attendance=None, rng=None):
     """A dry run of the day on the planned tables, to try out the seating rules. Nothing is saved.
 
     Each sign-up comes with the chance their contact status gives them (or `attendance` of them
     come, see `_who_comes`), in a random order, and is seated by the same rule as check-in. Someone
     with no gender on the sheet gets one at random, standing in for the door's question. Once the
     capacity is reached, later arrivals are turned away; people really checked in are already
-    inside. Returns the tables as they'd end up, the students, with those let in marked checked
-    in, and how many were turned away."""
+    inside. Then the tables are rearranged into coed ones where that helps (see `rebalance`).
+    Returns the tables as they'd end up, the students, with those let in marked checked in, how
+    many were turned away, and what the rearrangement did."""
     rng = rng or random.Random()
     tables = [{**t, 'members': list(t['members'])} for t in tables]
     seated = {m['id'] for t in tables for m in t['members'] if m['kind'] == 'student'}
+    genders = {s['id']: s['gender'] for s in students}
     arrivals = _who_comes(students, attendance, rng)
     rng.shuffle(arrivals)
     arrivals.sort(key=lambda s: not s['checked_in'])
@@ -268,13 +426,16 @@ def simulate(students, tables, capacity=None, attendance=None, rng=None):
             turned_away += 1
             continue
         s = came[s['id']] = {**s, 'checked_in': True, 'gender': s['gender'] or rng.choice([FEMALE, MALE])}
+        genders[s['id']] = s['gender']
         if s['id'] in seated:
             continue
-        index = pick_table(tables, s)
+        index = pick_table(tables, s, genders)
         if index is not None:
             tables[index]['members'].append({'kind': 'student', 'id': s['id'], 'locked': False})
+    rearranged = rebalance(tables, genders, mentors, fixed={s['id'] for s in students if s['checked_in']})
     return {
         'tables': tables,
+        'rearranged': rearranged,
         'students': [came.get(s['id'], s) for s in students],
         'turned_away': turned_away,
     }
@@ -303,7 +464,11 @@ def seat_at_check_in(signup):
     existing = table_of(plan.tables, 'student', signup.id)
     if existing:
         return table_summary(existing)
-    index = pick_table(plan.tables, student_of(signup))
+    genders = {}
+    if any(t.get('gender') == COED for t in plan.tables):
+        seated = [m['id'] for t in plan.tables for m in t['members'] if m['kind'] == 'student']
+        genders = {s.id: s.effective_gender for s in models.Signup.objects.filter(id__in=seated)}
+    index = pick_table(plan.tables, student_of(signup), genders)
     if index is None:
         return None
     plan.tables[index]['members'].append({'kind': 'student', 'id': signup.id, 'locked': False})

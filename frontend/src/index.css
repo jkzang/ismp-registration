@@ -786,6 +786,8 @@ a {
   --grp-female-soft: #fdf2f8;
   --grp-male: #2563eb;
   --grp-male-soft: #eff6ff;
+  --grp-coed: #7c3aed;
+  --grp-coed-soft: #f5f3ff;
   --grp-none: #64748b;
   --grp-none-soft: #f1f5f9;
   --ok: #16a34a;
@@ -805,6 +807,8 @@ a {
     --grp-female-soft: rgba(236, 72, 153, 0.14);
     --grp-male: #60a5fa;
     --grp-male-soft: rgba(59, 130, 246, 0.14);
+    --grp-coed: #a78bfa;
+    --grp-coed-soft: rgba(139, 92, 246, 0.14);
     --grp-none: #94a3b8;
     --grp-none-soft: rgba(148, 163, 184, 0.14);
     --ok: #4ade80;
@@ -1945,6 +1949,11 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
 .dg-table.is-male {
   --grp: var(--grp-male);
   --grp-soft: var(--grp-male-soft);
+}
+
+.dg-table.is-coed {
+  --grp: var(--grp-coed);
+  --grp-soft: var(--grp-coed-soft);
 }
 
 .dg-table.has-warning {

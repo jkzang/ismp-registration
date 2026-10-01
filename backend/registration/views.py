@@ -280,8 +280,9 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
         details = serializers.SimulateSerializer(data=request.data)
         details.is_valid(raise_exception=True)
         payload = seating.plan_payload(plan)
+        attending = [m for m in payload['mentors'] if m['id'] not in payload['excluded_mentor_ids']]
         return Response(seating.simulate(
-            payload['students'], payload['tables'], sheet.capacity, details.validated_data.get('attendance'),
+            payload['students'], attending, payload['tables'], sheet.capacity, details.validated_data.get('attendance'),
         ))
 
 

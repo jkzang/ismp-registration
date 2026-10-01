@@ -77,7 +77,8 @@ export type TableMember = { kind: 'student' | 'mentor'; id: number; locked: bool
 export type SeatingTable = {
   id: string
   name: string
-  gender: Gender | ''
+  /** A coed table takes both, within its level. */
+  gender: Gender | 'coed' | ''
   level: TableLevel | ''
   members: TableMember[]
 }
@@ -114,6 +115,8 @@ export type SeatingPlan = {
 export type Simulation = Pick<SeatingPlan, 'tables' | 'students'> & {
   /** Arrived after the sheet's capacity was reached. */
   turned_away: number
+  /** The last-minute pass that makes coed tables where one is past 3 students per mentor. */
+  rearranged: { coed_tables: number; students_moved: number; mentors_moved: number }
 }
 
 export type SeatedTable ={ id: string; name: string; mentors: string[] }
