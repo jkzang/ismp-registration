@@ -1794,6 +1794,13 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
   min-width: 0;
 }
 
+.dg-simulate-menu input[type='range'] {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 .dg-simulate-menu p {
   margin: 0;
   font-size: 13px;

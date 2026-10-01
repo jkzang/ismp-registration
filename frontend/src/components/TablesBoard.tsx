@@ -447,6 +447,15 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
                   Simulate
                 </button>
               </div>
+              <input
+                type="range"
+                aria-label="How many come"
+                min={0}
+                max={plan.students.length}
+                step={1}
+                value={attendance === '' ? expectedTurnout : Math.min(Number(attendance), plan.students.length)}
+                onChange={(e) => setAttendance(e.target.value)}
+              />
               <p className="muted">
                 Of {plan.students.length} sign-ups. Likelier ones are picked more often. Leave it blank for a random turnout.
               </p>
