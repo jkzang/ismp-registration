@@ -77,7 +77,7 @@ export type TableMember = { kind: 'student' | 'mentor'; id: number; locked: bool
 export type SeatingTable = {
   id: string
   name: string
-  /** A coed table takes both, within its level. */
+  /** A coed table takes both, and always has a level. */
   gender: Gender | 'coed' | ''
   level: TableLevel | ''
   members: TableMember[]

@@ -114,6 +114,11 @@ class TableSerializer(serializers.Serializer):
     level = serializers.ChoiceField(choices=[models.UNDERGRAD, models.GRAD], allow_blank=True, default='')
     members = TableMemberSerializer(many=True, max_length=200)
 
+    def validate(self, data):
+        if data['gender'] == 'coed' and not data['level']:
+            raise serializers.ValidationError('A coed table needs a level: undergrad or grad.')
+        return data
+
 
 class PlanUpdateSerializer(serializers.Serializer):
     tables = TableSerializer(many=True, max_length=100)

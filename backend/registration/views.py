@@ -279,6 +279,9 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
         plan, _ = models.SeatingPlan.objects.get_or_create(sheet=sheet)
         details = serializers.SimulateSerializer(data=request.data)
         details.is_valid(raise_exception=True)
+        # Like re-planning, it's for before the day: its arrangement mustn't be kept over people already seated.
+        if sheet.signups.filter(checked_in_at__isnull=False).exists():
+            raise drf_serializers.ValidationError('Check-in has started, so the simulation is off.')
         payload = seating.plan_payload(plan)
         attending = [m for m in payload['mentors'] if m['id'] not in payload['excluded_mentor_ids']]
         return Response(seating.simulate(

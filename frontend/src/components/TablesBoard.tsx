@@ -24,6 +24,7 @@ const UNASSIGNED = 'unassigned'
 type Key = `${TableMember['kind']}:${number}`
 const keyOf = (m: { kind: TableMember['kind']; id: number }): Key => `${m.kind}:${m.id}`
 
+// A coed table is always one level, so there's no "Coed Any".
 const GROUP_OPTIONS: { value: string; label: string }[] = [
   { value: 'female:undergrad', label: 'Girls UG' },
   { value: 'female:grad', label: 'Girls Grad' },
@@ -33,7 +34,6 @@ const GROUP_OPTIONS: { value: string; label: string }[] = [
   { value: 'male:', label: 'Guys Any' },
   { value: 'coed:undergrad', label: 'Coed UG' },
   { value: 'coed:grad', label: 'Coed Grad' },
-  { value: 'coed:', label: 'Coed Any' },
   { value: ':', label: 'No group' },
 ]
 
@@ -49,6 +49,13 @@ function newTableId() {
   return Math.random().toString(36).slice(2, 10)
 }
 
+/** A married couple: a man and a woman with the same last name. */
+function isCouple(mentors: PlanMentor[]) {
+  const lastName = (m: PlanMentor) => m.name.trim().split(/\s+/).slice(1).pop()?.toLowerCase()
+  const [a, b] = mentors
+  return mentors.length === 2 && a.gender !== b.gender && !!lastName(a) && lastName(a) === lastName(b)
+}
+
 /** Only what breaks the separation rules. */
 function tableWarnings(table: SeatingTable, students: PlanStudent[], mentors: PlanMentor[]): string[] {
   const warnings: string[] = []
@@ -59,6 +66,7 @@ function tableWarnings(table: SeatingTable, students: PlanStudent[], mentors: Pl
   if (levels.size > 1) warnings.push('Undergrad and grad mixed')
   if (mentors.length === 0 && students.length > 0) warnings.push('No mentor')
   if (coed) {
+    if (!isCouple(mentors)) warnings.push('Not led by a couple')
     // Nobody should be the only one of their gender at the table.
     if (students.filter((s) => s.gender === 'female').length === 1) warnings.push('Only one girl')
     if (students.filter((s) => s.gender === 'male').length === 1) warnings.push('Only one guy')
@@ -223,7 +231,7 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
   const asMember = (kind: TableMember['kind'], id: number): TableMember => ({ kind, id, locked: false })
   // Re-planning would move mentors away from students already told their table. The first plan
   // is still allowed, in case check-in began before anyone planned.
-  const checkInStarted = plan.tables.length > 0 && plan.students.some((s) => s.checked_in)
+  const checkInStarted = savedPlan.tables.length > 0 && savedPlan.students.some((s) => s.checked_in)
   const unseatedMentors = attendingMentors.filter((m) => !seated.has(`mentor:${m.id}`)).map((m) => asMember('mentor', m.id))
   const unseatedStudents = plan.students
     .filter((s) => s.checked_in && !seated.has(`student:${s.id}`))
@@ -439,8 +447,8 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
             type="button"
             className="with-icon"
             onClick={simulate}
-            disabled={simulating || plan.tables.length === 0}
-            title={`Pretend it's the day: ${attendance === '' ? 'a random turnout checks' : `${attendance} sign-ups check`} in, up to capacity, and ${attendance === '' ? 'is' : 'are'} seated by the check-in rules. Nothing is saved.`}
+            disabled={simulating || checkInStarted || plan.tables.length === 0}
+            title={checkInStarted ? 'Check-in has started, so the simulation is off.' : `Pretend it's the day: ${attendance === '' ? 'a random turnout checks' : `${attendance} sign-ups check`} in, up to capacity, and ${attendance === '' ? 'is' : 'are'} seated by the check-in rules. Nothing is saved.`}
           >
             <PlayIcon /> {simulating ? 'Simulating…' : simulation ? 'Simulate again' : 'Simulate'}
             {attendance !== '' && <span className="dg-simulate-count">{attendance}</span>}
@@ -452,7 +460,7 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
             aria-expanded={settingAttendance}
             title="Set how many come"
             onClick={() => setSettingAttendance((open) => !open)}
-            disabled={plan.tables.length === 0}
+            disabled={checkInStarted || plan.tables.length === 0}
           >
             <ChevronDownIcon />
           </button>
@@ -560,7 +568,7 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
             . {rearranged && `${rearranged}. `}
             Nothing is saved.
           </span>
-          {rearranged && (
+          {rearranged && !checkInStarted && (
             <button
               type="button"
               className="primary"
