@@ -8,6 +8,7 @@ import { CheckIcon, CloseIcon, PencilIcon, RefreshIcon, WarningIcon } from '../c
 import { TablesBoard } from '../components/TablesBoard'
 import { useAttendanceSync, type AttendanceStatus } from '../attendanceSync'
 import { getAccessToken, NoAccessError, pickSpreadsheet, readDatabaseTab, readTab, writeCells } from '../google'
+import { toLocalInput } from '../localTime'
 import { importWarnings } from '../sheetParser'
 import { parseWithDatabase } from '../studentDatabase'
 import { sheetName, type SeatingPlan, type Sheet } from '../types'
@@ -53,14 +54,6 @@ function CapacityField({ sheet, onSaved }: { sheet: Sheet; onSaved: (sheet: Shee
       />
     </label>
   )
-}
-
-// A datetime-local input's value, in the browser's time zone.
-function toLocalInput(iso: string | null) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 /** When the event starts; confirmed people's spots are reserved until a little after. */

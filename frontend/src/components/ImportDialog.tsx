@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { matchAbsentMentors } from '../absentMentors'
+import { searchMentors } from '../absentMentors'
 import { api, errorMessage } from '../api'
 import { useApp } from '../appContext'
 import { getAccessToken, getSpreadsheet, getTabValues, pickSpreadsheet, readDatabaseTab, writeCells, type PickedFile, type Tab } from '../google'
+import { nextHour, toLocalInput } from '../localTime'
 import { importWarnings } from '../sheetParser'
 import { describeFills, parseWithDatabase } from '../studentDatabase'
 import { useUndo } from '../undo'
@@ -14,6 +15,9 @@ type Step =
   | { kind: 'start' }
   | { kind: 'tabs'; file: PickedFile; title: string; tabs: Tab[] }
   | { kind: 'details'; file: PickedFile; title: string; tabs: Tab[]; tab: Tab }
+
+// How many matching mentors are offered at once.
+const MAX_SUGGESTIONS = 6
 
 /** How the dialog opens: with the file just picked in Google's Picker, or with why picking failed. */
 export type ImportStart = { file: PickedFile } | { error: string }
@@ -32,14 +36,61 @@ export function ImportDialog({ start, onClose, onImported }: {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>('error' in start ? start.error : null)
   // Kept across a change of tab or spreadsheet, so they're only typed once.
-  const [startsAt, setStartsAt] = useState('')
+  // Most sheets are imported on the day, shortly before the event: today, at the next full hour.
+  const [startsAt, setStartsAt] = useState(() => toLocalInput(nextHour()))
   const [capacity, setCapacity] = useState('')
   const [mentorsAbsent, setMentorsAbsent] = useState<'no' | 'yes'>('no')
-  const [absentNames, setAbsentNames] = useState('')
+  const [absentIds, setAbsentIds] = useState<number[]>([])
+  const [mentors, setMentors] = useState<Mentor[] | null>(null)
+  const [mentorsError, setMentorsError] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [active, setActive] = useState(0)
 
   useEffect(() => {
     dialogRef.current?.showModal()
   }, [])
+
+  // The chapter's mentors, to search through when some will be absent.
+  useEffect(() => {
+    if (mentorsAbsent !== 'yes' || mentors) return
+    let cancelled = false
+    setMentorsError(null)
+    api.listMentors().then(
+      (list) => !cancelled && setMentors(list),
+      (err) => !cancelled && setMentorsError(errorMessage(err, 'Couldn’t load the mentors.')),
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [mentorsAbsent, mentors])
+
+  const absent = absentIds.flatMap((id) => mentors?.find((m) => m.id === id) ?? [])
+  const suggestions = searchMentors(query, (mentors ?? []).filter((m) => !absentIds.includes(m.id))).slice(0, MAX_SUGGESTIONS)
+
+  function addAbsent(mentor: Mentor) {
+    setAbsentIds((ids) => [...ids, mentor.id])
+    setQuery('')
+    setActive(0)
+    setError(null)
+  }
+
+  function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!suggestions.length) return
+      e.preventDefault()
+      const step = e.key === 'ArrowDown' ? 1 : -1
+      setActive((i) => (i + step + suggestions.length) % suggestions.length)
+    } else if (e.key === 'Enter' && query.trim()) {
+      // Enter picks the highlighted mentor; it only submits the form once the search box is empty.
+      e.preventDefault()
+      if (suggestions[active]) addAbsent(suggestions[active])
+    } else if (e.key === 'Escape' && query) {
+      e.preventDefault()
+      setQuery('')
+    } else if (e.key === 'Backspace' && !query && absentIds.length) {
+      setAbsentIds((ids) => ids.slice(0, -1))
+    }
+  }
 
   async function run(label: string, action: () => Promise<void>) {
     setBusy(label)
@@ -128,27 +179,15 @@ export function ImportDialog({ start, onClose, onImported }: {
     // The inputs are `required` too; this catches what the browser's own check lets through.
     if (!startsAt || Number.isNaN(starts.getTime())) return setError('Enter the date and time of the event.')
     if (!Number.isInteger(people) || people < 1) return setError('Enter the event’s capacity as a whole number, 1 or more.')
-    if (mentorsAbsent === 'yes' && !absentNames.trim()) return setError('Enter the names of the mentors who’ll be absent, or choose No.')
-    run('Importing…', async () => {
-      const absent = mentorsAbsent === 'yes' ? await findAbsentMentors() : []
-      await importTab(step.file, step.title, step.tabs, step.tab, {
+    if (mentorsAbsent === 'yes' && !absentIds.length) return setError('Choose the mentors who’ll be absent, or choose No.')
+    if (mentorsAbsent === 'yes' && query.trim()) return setError(`Choose a mentor for “${query.trim()}”, or clear the search.`)
+    run('Importing…', () =>
+      importTab(step.file, step.title, step.tabs, step.tab, {
         starts_at: starts.toISOString(),
         capacity: people,
-        absent_mentor_ids: absent,
-      })
-    })
-  }
-
-  // The typed names are matched to the chapter's mentors, so the first plan can leave them out.
-  async function findAbsentMentors() {
-    const mentors: Mentor[] = await api.listMentors()
-    const { ids, unknown, ambiguous } = matchAbsentMentors(absentNames, mentors)
-    const quoted = (names: string[]) => names.map((n) => `“${n}”`).join(', ')
-    if (unknown.length) {
-      throw new Error(`No mentor in this chapter matches ${quoted(unknown)}. Check the spelling against the Mentors page.`)
-    }
-    if (ambiguous.length) throw new Error(`More than one mentor matches ${quoted(ambiguous)}. Enter their full name.`)
-    return ids
+        absent_mentor_ids: mentorsAbsent === 'yes' ? absentIds : [],
+      }),
+    )
   }
 
   return (
@@ -241,18 +280,71 @@ export function ImportDialog({ start, onClose, onImported }: {
               />
             </div>
             {mentorsAbsent === 'yes' && (
-              <label className="import-field">
-                <span>Who will be absent?</span>
+              <div className="import-field">
+                <label htmlFor="absent-search">Who will be absent?</label>
+                {absent.length > 0 && (
+                  <ul className="dg-chips is-row" aria-label="Mentors absent">
+                    {absent.map((m) => (
+                      <li key={m.id}>
+                        <button
+                          type="button"
+                          className="away-chip"
+                          onClick={() => setAbsentIds((ids) => ids.filter((id) => id !== m.id))}
+                          disabled={!!busy}
+                          title={`Remove ${m.name}`}
+                        >
+                          {m.name}
+                          <CloseIcon />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <input
+                  id="absent-search"
                   type="text"
                   className="import-field-wide"
-                  value={absentNames}
-                  onChange={(e) => setAbsentNames(e.target.value)}
-                  placeholder="Names, separated by commas"
+                  role="combobox"
+                  aria-expanded={!!query.trim()}
+                  aria-controls="absent-options"
+                  aria-autocomplete="list"
+                  aria-activedescendant={suggestions[active] ? `absent-option-${suggestions[active].id}` : undefined}
+                  autoComplete="off"
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value)
+                    setActive(0)
+                  }}
+                  onKeyDown={onSearchKeyDown}
+                  placeholder={mentors ? 'Search mentors by name' : 'Loading mentors…'}
                   autoFocus
-                  disabled={!!busy}
+                  disabled={!!busy || !mentors}
                 />
-              </label>
+                {query.trim() && (
+                  <ul id="absent-options" className="search-results import-mentor-results" role="listbox" aria-label="Matching mentors">
+                    {suggestions.map((m, i) => (
+                      <li key={m.id} role="presentation">
+                        <button
+                          type="button"
+                          id={`absent-option-${m.id}`}
+                          role="option"
+                          aria-selected={i === active}
+                          className={i === active ? 'is-active' : undefined}
+                          tabIndex={-1}
+                          // Keeps the focus in the search box, ready for the next name.
+                          onMouseDown={(e) => e.preventDefault()}
+                          onMouseEnter={() => setActive(i)}
+                          onClick={() => addAbsent(m)}
+                        >
+                          {m.name}
+                        </button>
+                      </li>
+                    ))}
+                    {suggestions.length === 0 && <li className="muted">No mentor in this chapter matches “{query.trim()}”.</li>}
+                  </ul>
+                )}
+                {mentorsError && <p className="error">{mentorsError}</p>}
+              </div>
             )}
             <p className="muted">
               All of these can be changed after the import: the date and capacity at the top of the sheet’s page, and

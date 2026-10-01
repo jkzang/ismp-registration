@@ -2464,6 +2464,16 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
   width: 100%;
 }
 
+.import-mentor-results {
+  margin: 0;
+  font-weight: 400;
+}
+
+.import-mentor-results button.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .import-field .segmented {
   align-self: flex-start;
 }
