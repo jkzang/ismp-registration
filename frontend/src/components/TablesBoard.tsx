@@ -239,10 +239,12 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
   const moves = simulation?.rearranged
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
   const rearranged =
-    moves && (moves.coed_tables > 0 || moves.mentors_moved > 0)
-      ? [
-          moves.coed_tables > 0 && `${plural(moves.coed_tables, 'table')} made coed to ease ones past ${IDEAL_PER_MENTOR} per mentor`,
+    moves && (moves.coed_tables > 0 || moves.tables_added > 0 || moves.mentors_seated > 0 || moves.mentors_moved > 0)
+      ? 'To ease tables past ' + IDEAL_PER_MENTOR + ' per mentor: ' + [
+          moves.coed_tables > 0 && `${plural(moves.coed_tables, 'table')} made coed`,
+          moves.tables_added > 0 && `${plural(moves.tables_added, 'table')} added`,
           moves.students_moved > 0 && `${plural(moves.students_moved, 'student')} moved`,
+          moves.mentors_seated > 0 && `${plural(moves.mentors_seated, 'spare mentor')} seated`,
           moves.mentors_moved > 0 && `${plural(moves.mentors_moved, 'mentor')} moved to seat a couple together`,
         ].filter(Boolean).join(', ')
       : ''
@@ -555,15 +557,15 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
             {unseatedStudents.length > 0 && ` · ${unseatedStudents.length} with no table to sit at`}
             {simulated.over > 0 && ` · ${simulated.over} ${simulated.over === 1 ? 'table' : 'tables'} past ${MAX_STUDENTS} students`}
             {simulated.guessed > 0 && ` · ${simulated.guessed} with no gender on the sheet given one at random`}
-            {rearranged && ` · ${rearranged}`}
-            . Nothing is saved.
+            . {rearranged && `${rearranged}. `}
+            Nothing is saved.
           </span>
           {rearranged && (
             <button
               type="button"
               className="primary"
               onClick={keepSimulation}
-              title="Make these the real tables: the coed tables and where the mentors sit. The pretend students aren't kept."
+              title="Make these the real tables: the coed and added tables, and where the mentors sit. The pretend students aren't kept."
             >
               Keep these tables
             </button>

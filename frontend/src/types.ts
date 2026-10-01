@@ -115,8 +115,15 @@ export type SeatingPlan = {
 export type Simulation = Pick<SeatingPlan, 'tables' | 'students'> & {
   /** Arrived after the sheet's capacity was reached. */
   turned_away: number
-  /** The last-minute pass that makes coed tables where one is past 3 students per mentor. */
-  rearranged: { coed_tables: number; students_moved: number; mentors_moved: number }
+  /** The last-minute pass that relieves tables past 3 students per mentor: coed tables (counting
+   * new ones), tables opened by mentors who had none, and couples brought together. */
+  rearranged: {
+    coed_tables: number
+    tables_added: number
+    students_moved: number
+    mentors_seated: number
+    mentors_moved: number
+  }
 }
 
 export type SeatedTable ={ id: string; name: string; mentors: string[] }

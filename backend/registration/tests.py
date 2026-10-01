@@ -576,7 +576,7 @@ class CoedTableTests(SeatingBase):
         self.add_mentor('Sam Park', 'male')
         self.generate()
         data = self.simulate(9)
-        self.assertEqual(data['rearranged'], {'coed_tables': 1, 'students_moved': 3, 'mentors_moved': 0})
+        self.assertEqual(data['rearranged'], {'coed_tables': 1, 'tables_added': 0, 'students_moved': 3, 'mentors_seated': 0, 'mentors_moved': 0})
         self.assertEqual(
             [(gender, dict(counts)) for gender, counts, _ in self.by_group(data)],
             [('female', {'female': 3}), ('coed', {'male': 3, 'female': 3})],
@@ -591,7 +591,7 @@ class CoedTableTests(SeatingBase):
         self.add_mentor('Tom Lee', 'male')
         self.generate()
         data = self.simulate(6)
-        self.assertEqual(data['rearranged'], {'coed_tables': 0, 'students_moved': 0, 'mentors_moved': 0})
+        self.assertEqual(data['rearranged'], {'coed_tables': 0, 'tables_added': 0, 'students_moved': 0, 'mentors_seated': 0, 'mentors_moved': 0})
         self.assertEqual([t['gender'] for t in data['tables']], ['female', 'male'])
 
     def test_no_coed_table_for_a_single_guy_or_across_levels(self):
@@ -636,6 +636,71 @@ class CoedTableTests(SeatingBase):
         result = seating.rebalance(tables, {}, mentors)
         self.assertEqual(result['mentors_moved'], 2)
         self.assertEqual([[m['id'] for m in t['members']] for t in tables], [[1, 3], [2]])
+
+    def spare_mentor_setup(self, tables, mentors, students):
+        """Tables as (id, gender, mentor ids, student ids), mentors as (id, name, gender), and
+        students as {gender: ids}."""
+        member = lambda kind, i: {'kind': kind, 'id': i, 'locked': False}
+        return (
+            [
+                {'id': i, 'name': i, 'gender': gender, 'level': 'undergrad',
+                 'members': [member('mentor', m) for m in mentor_ids] + [member('student', s) for s in student_ids]}
+                for i, gender, mentor_ids, student_ids in tables
+            ],
+            {i: gender for gender, ids in students.items() for i in ids},
+            [{'id': i, 'name': name, 'gender': gender} for i, name, gender in mentors],
+        )
+
+    def sizes(self, tables):
+        return [(t['gender'], seating._count(t, 'mentor'), seating._count(t, 'student')) for t in tables]
+
+    def test_spare_mentor_joins_a_crowded_table_of_their_gender_with_a_free_seat(self):
+        tables, genders, mentors = self.spare_mentor_setup(
+            [('a', 'male', [1], range(10, 16))],
+            [(1, 'Tom Lee', 'male'), (2, 'Sam Park', 'male'), (3, 'Mia Stone', 'female')],
+            {'male': range(10, 16)},
+        )
+        result = seating.rebalance(tables, genders, mentors)
+        self.assertEqual(self.sizes(tables), [('male', 2, 6)])
+        self.assertEqual((result['mentors_seated'], result['tables_added']), (1, 0))
+
+    def test_spare_mentor_opens_a_table_for_their_own_genders_extra_students(self):
+        tables, genders, mentors = self.spare_mentor_setup(
+            [('a', 'male', [1, 2], range(10, 19))],
+            [(1, 'Tom Lee', 'male'), (2, 'Sam Park', 'male'), (3, 'Dan Wu', 'male')],
+            {'male': range(10, 19)},
+        )
+        result = seating.rebalance(tables, genders, mentors)
+        self.assertEqual(self.sizes(tables), [('male', 2, 6), ('male', 1, 3)])
+        self.assertEqual(result['tables_added'], 1)
+        self.assertEqual(tables[1]['level'], 'undergrad')
+
+    def test_spare_guy_mentor_opens_a_coed_table_for_crowded_girls(self):
+        tables, genders, mentors = self.spare_mentor_setup(
+            [('a', 'female', [1], range(10, 17)), ('b', 'male', [2, 3], range(20, 26))],
+            [(1, 'Mia Stone', 'female'), (2, 'Tom Lee', 'male'), (3, 'Sam Park', 'male'), (4, 'Dan Wu', 'male')],
+            {'female': range(10, 17), 'male': range(20, 26)},
+        )
+        result = seating.rebalance(tables, genders, mentors)
+        # The guys table is full, so no girl can join it: 2 guys and 2 girls go to Dan's new table.
+        # That leaves the guys table room for 2 more girls.
+        self.assertEqual(self.sizes(tables), [('female', 1, 3), ('coed', 2, 6), ('coed', 1, 4)])
+        self.assertEqual(seating._gender_counts(tables[1], genders), {'female': 2, 'male': 4})
+        self.assertEqual(seating._gender_counts(tables[2], genders), {'female': 2, 'male': 2})
+        self.assertEqual(result, {
+            'coed_tables': 2, 'tables_added': 1, 'students_moved': 6, 'mentors_seated': 1, 'mentors_moved': 0,
+        })
+
+    def test_no_coed_table_opens_when_the_guys_cannot_spare_two(self):
+        tables, genders, mentors = self.spare_mentor_setup(
+            [('a', 'female', [1], range(10, 17)), ('b', 'male', [2, 3], range(20, 23))],
+            [(1, 'Mia Stone', 'female'), (2, 'Tom Lee', 'male'), (3, 'Sam Park', 'male'), (4, 'Dan Wu', 'male')],
+            {'female': range(10, 17), 'male': range(20, 23)},
+        )
+        result = seating.rebalance(tables, genders, mentors)
+        # The guys table has room instead: it goes coed, and Dan stays spare.
+        self.assertEqual(self.sizes(tables), [('female', 1, 4), ('coed', 2, 6)])
+        self.assertEqual((result['tables_added'], result['mentors_seated']), (0, 0))
 
     def test_people_really_checked_in_are_not_moved(self):
         girls = self.add_students(6, 'female', 'undergrad')
