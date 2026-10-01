@@ -1717,6 +1717,34 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
   background: var(--hover-wash);
 }
 
+.dg-sim {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 6px 6px 6px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.dg-sim strong {
+  flex: none;
+  color: var(--warm);
+}
+
+.dg-sim span {
+  flex: 1;
+  min-width: 0;
+}
+
+.dg-sim button {
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+}
+
 .dg-tray {
   flex: 1;
   min-width: 0;

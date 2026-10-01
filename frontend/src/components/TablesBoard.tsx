@@ -8,11 +8,12 @@ import {
   type PlanStudent,
   type SeatingPlan,
   type SeatingTable,
+  type Simulation,
   type TableMember,
 } from '../types'
 import { useUndo } from '../undo'
 import { ConfirmDialog } from './ConfirmDialog'
-import { LockIcon, PlusIcon, ShuffleIcon, TrashIcon, UnlockIcon } from './icons'
+import { LockIcon, PlayIcon, PlusIcon, ShuffleIcon, TrashIcon, UnlockIcon } from './icons'
 
 // 3 students per mentor is comfortable, 4 is fine. A table seats 8 at most: 2 mentors and 6 students.
 const IDEAL_PER_MENTOR = 3
@@ -67,12 +68,14 @@ function Tag({ children, title, off = false }: { children: React.ReactNode; titl
   )
 }
 
-function PersonChip({ member, student, mentor, table, onToggleLock, onNotComing }: {
+function PersonChip({ member, student, mentor, table, fixed = false, onToggleLock, onNotComing }: {
   member: TableMember
   student?: PlanStudent
   mentor?: PlanMentor
   /** The table they sit at; tags that don't match its group are highlighted. */
   table?: SeatingTable
+  /** Can't be dragged: the board is showing a simulation. */
+  fixed?: boolean
   onToggleLock?: () => void
   onNotComing?: () => void
 }) {
@@ -84,7 +87,7 @@ function PersonChip({ member, student, mentor, table, onToggleLock, onNotComing 
     <li
       className={`person-chip${mentor ? ' is-mentor' : ''}${student && !student.checked_in ? ' is-gone' : ''}`}
       title={mentor ? `${person.name} (mentor)` : student && !student.checked_in ? `${person.name} (not here yet)` : person.name}
-      draggable
+      draggable={!fixed}
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', keyOf(member))
         e.dataTransfer.effectAllowed = 'move'
@@ -178,7 +181,7 @@ function useTableGrid(count: number) {
   return { ref, cols, rows: Math.max(1, Math.ceil(count / cols)) }
 }
 
-export function TablesBoard({ sheetId, plan, setPlan }: {
+export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
   sheetId: number
   plan: SeatingPlan
   setPlan: (plan: SeatingPlan) => void
@@ -186,6 +189,10 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
   const [error, setError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [confirmingReplan, setConfirmingReplan] = useState(false)
+  // A pretend check-in shown in place of the saved board. The board can't be edited while it's up.
+  const [simulation, setSimulation] = useState<Simulation | null>(null)
+  const [simulating, setSimulating] = useState(false)
+  const plan = simulation ? { ...savedPlan, ...simulation } : savedPlan
   const [removing, setRemoving] = useState<SeatingTable | null>(null)
   const { push } = useUndo()
   const [dragOver, setDragOver] = useState<string | null>(null)
@@ -209,6 +216,12 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
     .filter((s) => s.checked_in && !seated.has(`student:${s.id}`))
     .map((s) => asMember('student', s.id))
 
+  const simulated = {
+    came: plan.students.filter((s) => s.checked_in).length,
+    over: plan.tables.filter((t) => t.members.filter((m) => m.kind === 'student').length > MAX_STUDENTS).length,
+    guessed: plan.students.filter((s, i) => s.gender !== savedPlan.students[i]?.gender).length,
+  }
+
   // Undo and redo put the whole board back as it was at that step. Its time tells the server which
   // check-ins came after, so seats handed out since then are kept.
   const restore = (previous: SeatingPlan) => async () =>
@@ -221,6 +234,7 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
 
   /** `label` finishes "Undid …" and "Redid …". */
   async function save(tables: SeatingTable[], excludedIds: number[], label: string) {
+    if (simulation) return
     const previous = plan
     setPlan({ ...previous, tables, excluded_mentor_ids: excludedIds })
     try {
@@ -303,6 +317,18 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
     }
   }
 
+  async function simulate() {
+    setSimulating(true)
+    try {
+      setSimulation(await api.simulatePlan(sheetId))
+      setError(null)
+    } catch (err) {
+      setError(errorMessage(err, 'Could not run the simulation'))
+    } finally {
+      setSimulating(false)
+    }
+  }
+
   const chipFor = (member: TableMember, tableId?: string) => (
     <PersonChip
       key={keyOf(member)}
@@ -310,8 +336,9 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
       table={tableId ? plan.tables.find((t) => t.id === tableId) : undefined}
       student={member.kind === 'student' ? studentsById.get(member.id) : undefined}
       mentor={member.kind === 'mentor' ? mentorsById.get(member.id) : undefined}
-      onToggleLock={tableId ? () => toggleLock(tableId, keyOf(member)) : undefined}
-      onNotComing={member.kind === 'mentor' ? () => markNotComing(member.id) : undefined}
+      fixed={!!simulation}
+      onToggleLock={tableId && !simulation ? () => toggleLock(tableId, keyOf(member)) : undefined}
+      onNotComing={member.kind === 'mentor' && !simulation ? () => markNotComing(member.id) : undefined}
     />
   )
 
@@ -343,12 +370,21 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
             type="button"
             className="primary with-icon"
             onClick={() => (plan.tables.length > 0 ? setConfirmingReplan(true) : generate())}
-            disabled={generating || checkInStarted}
+            disabled={generating || checkInStarted || !!simulation}
           >
             <ShuffleIcon /> {generating ? 'Planning…' : plan.tables.length > 0 ? 'Re-plan' : 'Plan tables'}
           </button>
         </span>
-        <button type="button" className="with-icon" onClick={addTable}>
+        <button
+          type="button"
+          className="with-icon"
+          onClick={simulate}
+          disabled={simulating || plan.tables.length === 0}
+          title="Pretend it's the day: a random turnout checks in, up to capacity, and is seated by the check-in rules. Nothing is saved."
+        >
+          <PlayIcon /> {simulating ? 'Simulating…' : simulation ? 'Simulate again' : 'Simulate'}
+        </button>
+        <button type="button" className="with-icon" onClick={addTable} disabled={!!simulation}>
           <PlusIcon /> Table
         </button>
         {plan.mentors.length === 0 && (
@@ -364,7 +400,7 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
                 .filter((m) => excluded.has(m.id))
                 .map((m) => (
                   <li key={m.id}>
-                    <button type="button" className="away-chip" onClick={() => restoreMentor(m.id)} title={`Put ${m.name} back`}>
+                    <button type="button" className="away-chip" onClick={() => restoreMentor(m.id)} disabled={!!simulation} title={`Put ${m.name} back`}>
                       {m.name}
                       <PlusIcon />
                     </button>
@@ -396,6 +432,22 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
         )}
         {error && <span className="error">{error}</span>}
       </div>
+      {simulation && (
+        <p className="dg-sim" role="status">
+          <strong>Simulation</strong>
+          <span>
+            {simulated.came} of {plan.students.length} sign-ups got in
+            {simulation.turned_away > 0 && ` · ${simulation.turned_away} turned away at capacity`}
+            {unseatedStudents.length > 0 && ` · ${unseatedStudents.length} with no table to sit at`}
+            {simulated.over > 0 && ` · ${simulated.over} ${simulated.over === 1 ? 'table' : 'tables'} past ${MAX_STUDENTS} students`}
+            {simulated.guessed > 0 && ` · ${simulated.guessed} with no gender on the sheet given one at random`}
+            . Nothing is saved.
+          </span>
+          <button type="button" onClick={() => setSimulation(null)}>
+            Back to the plan
+          </button>
+        </p>
+      )}
 
       <div
         ref={grid.ref}
@@ -428,6 +480,7 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
                   className="dg-group"
                   value={`${table.gender}:${table.level}`}
                   onChange={(e) => setGroup(table.id, e.target.value)}
+                  disabled={!!simulation}
                   aria-label={`Group for ${table.name}`}
                 >
                   {GROUP_OPTIONS.map((o) => (
@@ -436,7 +489,7 @@ export function TablesBoard({ sheetId, plan, setPlan }: {
                     </option>
                   ))}
                 </select>
-                <button type="button" className="chip-icon dg-remove" aria-label={`Remove ${table.name}`} title="Remove table" onClick={() => (table.members.length > 0 ? setRemoving(table) : removeTable(table.id))}>
+                <button type="button" className="chip-icon dg-remove" aria-label={`Remove ${table.name}`} title="Remove table" disabled={!!simulation} onClick={() => (table.members.length > 0 ? setRemoving(table) : removeTable(table.id))}>
                   <TrashIcon />
                 </button>
               </div>

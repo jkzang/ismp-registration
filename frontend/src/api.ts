@@ -13,6 +13,7 @@ import type {
   SeatingTable,
   Sheet,
   SheetRows,
+  Simulation,
 } from './types'
 
 function csrfToken() {
@@ -91,6 +92,7 @@ export const api = {
       body: JSON.stringify({ tables, excluded_mentor_ids: excludedMentorIds, updated_at: updatedAt }),
     }),
   generatePlan: (sheetId: number) => post<SeatingPlan>(`/sheets/${sheetId}/plan/generate/`),
+  simulatePlan: (sheetId: number) => post<Simulation>(`/sheets/${sheetId}/plan/simulate/`),
 
   checkIn: (signupId: number, door: { gender?: Gender; level?: Level } = {}) =>
     post<CheckInResult>(`/signups/${signupId}/check-in/`, door),

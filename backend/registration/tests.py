@@ -1,3 +1,4 @@
+import random
 import shutil
 import tempfile
 from datetime import timedelta
@@ -430,6 +431,49 @@ class TablePlanningTests(SeatingBase):
         for _ in range(3):
             regenerated = {t['id']: t for t in self.generate()['tables']}
             self.assertIn({'kind': 'student', 'id': students[1].id, 'locked': True}, regenerated[pinned_table]['members'])
+
+    def test_simulation_seats_who_comes_by_the_check_in_rules_and_saves_nothing(self):
+        girls = self.add_students(12, 'female', 'undergrad')
+        self.add_students(5, 'male', 'grad', status='not_coming')
+        unknown = self.add_students(1, '', 'undergrad')[0]
+        for name, gender in (('Mia', 'female'), ('Ava', 'female'), ('Leo', 'male')):
+            self.add_mentor(name, gender)
+        before = self.generate()
+        self.check_in(girls[0])
+        with mock.patch('registration.seating.random.Random', return_value=random.Random(1)):
+            data = self.client.post(f'/api/sheets/{self.sheet.id}/plan/simulate/').data
+        came = {s['id']: s for s in data['students'] if s['checked_in']}
+        self.assertIn(girls[0].id, came)
+        self.assertTrue(1 < len(came) <= 13)
+        self.assertTrue(all(s['status'] == 'confirmed' and s['gender'] for s in came.values()))
+        if unknown.id in came:
+            self.assertIn(came[unknown.id]['gender'], ('female', 'male'))
+        seated = [i for ids in self.seated_students(data) for i in ids]
+        self.assertEqual(len(seated), len(set(seated)))
+        for table in data['tables']:
+            for m in table['members']:
+                if m['kind'] == 'student':
+                    self.assertEqual(came[m['id']]['gender'], table['gender'])
+        # No male table was planned (nobody male expected), so only girls can be seated.
+        self.assertEqual(set(seated), {i for i, s in came.items() if s['gender'] == 'female'})
+        self.assertEqual([t['id'] for t in data['tables']], [t['id'] for t in before['tables']])
+        self.assertEqual(self.seated_students(self.plan()), [[girls[0].id], []])
+        self.assertEqual(models.Signup.objects.filter(checked_in_at__isnull=False).count(), 1)
+
+    def test_simulation_stops_letting_people_in_at_capacity(self):
+        girls = self.add_students(12, 'female', 'undergrad')
+        self.add_mentor('Mia', 'female')
+        self.generate()
+        self.check_in(girls[0])
+        self.sheet.capacity = 3
+        self.sheet.save()
+        with mock.patch('registration.seating.random.Random', return_value=random.Random(1)):
+            data = self.client.post(f'/api/sheets/{self.sheet.id}/plan/simulate/').data
+        came = [s['id'] for s in data['students'] if s['checked_in']]
+        self.assertEqual(len(came), 3)
+        self.assertIn(girls[0].id, came)
+        self.assertGreater(data['turned_away'], 0)
+        self.assertEqual(sorted(i for ids in self.seated_students(data) for i in ids), sorted(came))
 
     def test_first_plan_is_allowed_after_check_in_starts(self):
         student = self.add_students(6, 'female', 'grad')[0]

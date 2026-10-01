@@ -230,6 +230,38 @@ def generate(students, mentors, existing_tables, rng=None):
     return tables
 
 
+def simulate(students, tables, capacity=None, rng=None):
+    """A dry run of the day on the planned tables, to try out the seating rules. Nothing is saved.
+
+    Each sign-up comes with the chance their contact status gives them, in a random order, and is
+    seated by the same rule as check-in. Someone with no gender on the sheet gets one at random,
+    standing in for the door's question. Once the capacity is reached, later arrivals are turned
+    away; people really checked in are already inside. Returns the tables as they'd end up, the
+    students, with those let in marked checked in, and how many were turned away."""
+    rng = rng or random.Random()
+    tables = [{**t, 'members': list(t['members'])} for t in tables]
+    seated = {m['id'] for t in tables for m in t['members'] if m['kind'] == 'student'}
+    arrivals = [s for s in students if s['checked_in'] or rng.random() < s['chance']]
+    rng.shuffle(arrivals)
+    arrivals.sort(key=lambda s: not s['checked_in'])
+    came, turned_away = {}, 0
+    for s in arrivals:
+        if capacity is not None and len(came) >= capacity and not s['checked_in']:
+            turned_away += 1
+            continue
+        s = came[s['id']] = {**s, 'checked_in': True, 'gender': s['gender'] or rng.choice([FEMALE, MALE])}
+        if s['id'] in seated:
+            continue
+        index = pick_table(tables, s)
+        if index is not None:
+            tables[index]['members'].append({'kind': 'student', 'id': s['id'], 'locked': False})
+    return {
+        'tables': tables,
+        'students': [came.get(s['id'], s) for s in students],
+        'turned_away': turned_away,
+    }
+
+
 def table_of(tables, kind, person_id):
     return next((t for t in tables if any(m['kind'] == kind and m['id'] == person_id for m in t['members'])), None)
 

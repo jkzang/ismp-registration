@@ -110,7 +110,13 @@ export type SeatingPlan = {
   updated_at: string
 }
 
-export type SeatedTable = { id: string; name: string; mentors: string[] }
+/** A pretend check-in on the planned tables: who got in and where they'd sit. Never saved. */
+export type Simulation = Pick<SeatingPlan, 'tables' | 'students'> & {
+  /** Arrived after the sheet's capacity was reached. */
+  turned_away: number
+}
+
+export type SeatedTable ={ id: string; name: string; mentors: string[] }
 
 export type CheckInResult = { student: PlanStudent; table: SeatedTable | null }
 

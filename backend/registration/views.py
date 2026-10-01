@@ -272,6 +272,14 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
             plan.save()
         return Response(seating.plan_payload(plan))
 
+    @action(detail=True, methods=['post'], url_path='plan/simulate')
+    def simulate_plan(self, request, pk=None):
+        """A pretend check-in on the current tables, for trying out the seating rules. Saves nothing."""
+        sheet = self.get_object()
+        plan, _ = models.SeatingPlan.objects.get_or_create(sheet=sheet)
+        payload = seating.plan_payload(plan)
+        return Response(seating.simulate(payload['students'], payload['tables'], sheet.capacity))
+
 
 class SignupViewSet(ChapterScoped, viewsets.GenericViewSet):
     def get_queryset(self):

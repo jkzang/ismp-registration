@@ -53,6 +53,14 @@ export function ShuffleIcon() {
   )
 }
 
+export function PlayIcon() {
+  return (
+    <svg {...base}>
+      <path d="M7 4v16l13-8z" />
+    </svg>
+  )
+}
+
 export function PlusIcon() {
   return (
     <svg {...base}>
