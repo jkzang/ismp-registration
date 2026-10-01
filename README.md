@@ -21,8 +21,8 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   picker.
 - For volunteers, only the Google account id and display name are stored, not the email.
 - Imports are deleted `SIGNUP_RETENTION_DAYS` (default 30) after their last import or re-sync.
-  This runs whenever the sheet list loads, and `python manage.py purge_expired_sheets` does the
-  same for a cron job.
+  This runs whenever the sheet list loads; `python manage.py purge_expired_sheets` does the same
+  by hand (Render's free plan has no cron jobs).
 
 ## Google Cloud setup (one time)
 
@@ -35,7 +35,7 @@ Use a personal Google Cloud project. No org project is needed.
    and `.../auth/drive.file`. All are non-sensitive, so no Google verification review is needed.
    While in *Testing*, add yourself as a test user; publish the app when you're ready for others.
 4. **Credentials → Create credentials → OAuth client ID** → *Web application*.
-   Authorized JavaScript origins: `http://localhost:5173` (plus your production URL later).
+   Authorized JavaScript origins: `http://localhost:5173` (plus your production URL, see Deploying).
    Copy the client ID → `GOOGLE_CLIENT_ID`.
 5. **Credentials → Create credentials → API key**. Restrict it to the *Google Picker API* and to
    HTTP referrers `http://localhost:5173/*` (plus production later) → `GOOGLE_API_KEY`.
@@ -61,3 +61,32 @@ npm run dev        # http://localhost:5173, proxies /api to :8000
 ```
 
 Tests: `../venv/bin/python manage.py test registration` in `backend/`, `npm test` in `frontend/`.
+
+## Deploying (Render + Neon, free)
+
+One Render web service serves the API and the built frontend from the same origin; the database
+is on Neon. Neither can charge you without a payment method on file, so don't add one: going over a
+free limit suspends the service until next month instead. `render.yaml` pins `plan: free`.
+
+1. **Neon**: create a project in **AWS US West 2 (Oregon)**. Under **Connect**, turn off
+   *Connection pooling* and copy the connection string. That's `DATABASE_URL`.
+2. **Render**: **New → Blueprint**, pick this GitHub repo. It reads `render.yaml` and asks for
+   `DATABASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_API_KEY` and `GOOGLE_APP_ID` (same values as your
+   `.env`). `DJANGO_SECRET_KEY` is generated. The first deploy builds the frontend, installs
+   Python packages, and runs migrations on start.
+3. **Google Cloud**, with your service's URL (e.g. `https://ismp-registration.onrender.com`):
+   - OAuth client → Authorized JavaScript origins: add the URL.
+   - API key → HTTP referrers: add `https://ismp-registration.onrender.com/*`.
+   - OAuth consent screen: **Publish app** so people other than test users can sign in.
+4. **Check the CSP**: sign in, import a sheet with the Picker, and re-sync, with the browser's
+   console open. If nothing says *Content-Security-Policy* (report-only), delete
+   `DJANGO_CSP_REPORT_ONLY` in Render's Environment tab to enforce it. If something does, add
+   that domain in `backend/config/csp.py`.
+5. After a few weeks with no HTTPS problems, set `DJANGO_HSTS_SECONDS=31536000`.
+
+The free service sleeps after 15 minutes without traffic and takes up to a minute to wake, so
+open the app a few minutes before check-in starts.
+
+To try production settings locally: `npm run build` in `frontend/`, then in `backend/`
+`DJANGO_DEBUG=0 DJANGO_SECRET_KEY=x ../venv/bin/gunicorn config.wsgi` and request it with an
+`X-Forwarded-Proto: https` header (otherwise it redirects to HTTPS).

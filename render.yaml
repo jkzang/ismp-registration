@@ -1,0 +1,39 @@
+# Render Blueprint: one free web service that serves both the API and the built frontend.
+# The database is on Neon (Render's free Postgres is deleted after 30 days). See README → Deploying.
+services:
+  - name: ismp-registration
+    type: web
+    runtime: python
+    # Pinned so a deploy never moves the service to a paid instance.
+    plan: free
+    # Same region as the Neon database (AWS us-west-2), so each query is a short hop.
+    region: oregon
+    buildCommand: >-
+      cd frontend && npm ci --include=dev && npm run build && cd ..
+      && pip install -r backend/requirements.txt
+    # Migrations run on start because free services have no pre-deploy step; with nothing to apply it's a no-op.
+    startCommand: >-
+      cd backend && python manage.py migrate --noinput
+      && gunicorn config.wsgi --bind 0.0.0.0:$PORT --workers ${WEB_CONCURRENCY:-2} --timeout 60
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      # Neon → Connect → the direct (not pooled) connection string.
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GOOGLE_APP_ID
+        sync: false
+      - key: ALLOWED_GOOGLE_DOMAIN
+        value: acts2.network
+      # Report-only until sign-in and the Picker are confirmed working with no CSP errors in the
+      # browser console; then delete this variable to enforce the policy.
+      - key: DJANGO_CSP_REPORT_ONLY
+        value: "1"
