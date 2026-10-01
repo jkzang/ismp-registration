@@ -475,6 +475,23 @@ class TablePlanningTests(SeatingBase):
         self.assertGreater(data['turned_away'], 0)
         self.assertEqual(sorted(i for ids in self.seated_students(data) for i in ids), sorted(came))
 
+    def test_simulation_can_be_given_how_many_come(self):
+        girls = self.add_students(6, 'female', 'undergrad')
+        self.add_students(6, 'female', 'undergrad', status='not_coming')
+        self.add_mentor('Mia', 'female')
+        self.generate()
+        self.check_in(girls[0])
+        simulate = lambda n: self.client.post(
+            f'/api/sheets/{self.sheet.id}/plan/simulate/', {'attendance': n}, format='json',
+        ).data
+        came = [s for s in simulate(4)['students'] if s['checked_in']]
+        self.assertEqual(len(came), 4)
+        self.assertIn(girls[0].id, [s['id'] for s in came])
+        self.assertTrue(all(s['status'] == 'confirmed' for s in came))
+        # More than are likely to come: the unlikely make up the number, up to everyone signed up.
+        self.assertEqual(sum(s['checked_in'] for s in simulate(9)['students']), 9)
+        self.assertEqual(sum(s['checked_in'] for s in simulate(50)['students']), 12)
+
     def test_first_plan_is_allowed_after_check_in_starts(self):
         student = self.add_students(6, 'female', 'grad')[0]
         self.add_mentor('Mia', 'female')
@@ -588,17 +605,37 @@ class CheckInSeatingTests(SeatingBase):
         data['tables'][0]['members'].append({'kind': 'student', 'id': students[7].id, 'locked': True})
         self.assertEqual(self.save_plan({'tables': data['tables']}).status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_levels_stay_apart_even_past_four(self):
-        undergrads = self.add_students(5, 'female', 'undergrad', status='not_contacted')
+    def test_table_at_three_per_mentor_waits_while_another_of_its_level_fills(self):
+        students = self.add_students(13, 'female', 'undergrad', status='not_contacted')
+        self.add_students(12, 'female', 'undergrad')  # 10.2 expected: two tables
+        for name in ('Mia', 'Ava', 'Zoe'):
+            self.add_mentor(name, 'female')
+        self.generate()  # Table 1 gets two mentors, Table 2 one
+        sizes = lambda: [len(t) for t in self.seated_students(self.plan())]
+        for s in students[:6]:
+            self.check_in(s)
+        self.assertEqual(sizes(), [3, 3])
+        for s in students[6:9]:
+            self.check_in(s)
+        self.assertEqual(sizes(), [6, 3])
+        # Both at 3 per mentor and no other level to spill into: even again.
+        for s in students[9:12]:
+            self.check_in(s)
+        self.assertEqual(sizes(), [6, 6])
+        self.check_in(students[12])
+        self.assertEqual(sizes(), [7, 6])
+
+    def test_spills_into_the_other_level_once_their_own_is_at_three_per_mentor(self):
+        undergrads = self.add_students(8, 'female', 'undergrad', status='not_contacted')
         self.add_students(4, 'female', 'undergrad')
         self.add_students(3, 'female', 'grad')
         self.add_mentor('Mia', 'female')
         self.add_mentor('Ava', 'female')
         data = self.generate()
-        grad_table = next(t['id'] for t in data['tables'] if t['level'] == 'grad')
-        tables = {self.check_in(s)['table']['id'] for s in undergrads}
-        self.assertEqual(len(tables), 1)
-        self.assertNotIn(grad_table, tables)
+        own, other = [next(t['id'] for t in data['tables'] if t['level'] == level) for level in ('undergrad', 'grad')]
+        tables = [self.check_in(s)['table']['id'] for s in undergrads]
+        # Then both are at 3 per mentor, and the rest spread evenly across the gender's tables.
+        self.assertEqual(tables, [own] * 3 + [other] * 3 + [own, other])
 
     def test_check_in_response_names_the_table_and_mentor(self):
         student = self.add_students(3, 'female', 'grad')[0]

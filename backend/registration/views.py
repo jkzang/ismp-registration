@@ -277,8 +277,12 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
         """A pretend check-in on the current tables, for trying out the seating rules. Saves nothing."""
         sheet = self.get_object()
         plan, _ = models.SeatingPlan.objects.get_or_create(sheet=sheet)
+        details = serializers.SimulateSerializer(data=request.data)
+        details.is_valid(raise_exception=True)
         payload = seating.plan_payload(plan)
-        return Response(seating.simulate(payload['students'], payload['tables'], sheet.capacity))
+        return Response(seating.simulate(
+            payload['students'], payload['tables'], sheet.capacity, details.validated_data.get('attendance'),
+        ))
 
 
 class SignupViewSet(ChapterScoped, viewsets.GenericViewSet):

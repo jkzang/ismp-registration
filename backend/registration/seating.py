@@ -1,14 +1,15 @@
 """Discussion tables and seating at check-in, ported from ISMP Operations.
 
 The organizers' rules: SEPARATE undergrads from grads and guys from girls, seat mentors at tables
-of their own gender, and keep a group's tables as even as possible as students arrive. A table
-seats 8 at most: up to 2 mentors and 6 students. Nobody starts a table alone, so once their
-group's tables are full, check-in squeezes students in past 6 rather than open one.
+of their own gender, and keep a group's tables as even as possible as students arrive, at 3
+students per mentor. A table seats 8 at most: up to 2 mentors and 6 students. Once their level's
+tables are at 3 per mentor, students spill into the other level's, and then spread evenly across
+the gender's tables. Nobody starts a table alone, so once those are full, check-in squeezes
+students in past 6 rather than open one.
 
 Nobody knows for sure who will come, so students aren't seated ahead of time. Tables are planned
 from expected turnout (each sign-up weighted by how often people with that contact status show
-up) and each gets a group and mentors. Check-in then seats each student at the emptiest table of
-their group.
+up) and each gets a group and mentors. Check-in then seats each student at a table of their group.
 """
 import math
 import random
@@ -26,6 +27,8 @@ STUDENT_LEVELS = (UNDERGRAD, GRAD)
 # Bigger groups let students meet each other: tables seat 8, two mentors and 6 students. The board
 # holds to both; only check-in goes past 6 students, when every table of the group is full.
 MENTORS_PER_TABLE = 2
+# What a table is filled to before students spill into the other level's tables.
+IDEAL_PER_MENTOR = 3
 MAX_STUDENTS_PER_TABLE = 6
 
 # Share of people with each contact status who show up (the organizers' estimates); any other status is 0.
@@ -118,6 +121,10 @@ def _count(table, kind):
     return sum(1 for m in table['members'] if m['kind'] == kind)
 
 
+def _capacity(table):
+    return min(MAX_STUDENTS_PER_TABLE, IDEAL_PER_MENTOR * _count(table, 'mentor'))
+
+
 def _has_room(table, kind):
     return _count(table, kind) < (MAX_STUDENTS_PER_TABLE if kind == 'student' else MENTORS_PER_TABLE)
 
@@ -125,26 +132,32 @@ def _has_room(table, kind):
 def pick_table(tables, student):
     """Index of the table to seat a student at on check-in, or None if there's no table for their gender.
 
-    Keeps their group's tables as even as possible: the one with the fewest students, and of
-    those the one with the most mentors. Levels stay apart: the other level's tables are used
-    only when their own level has none. Tables with a mentor come first. Never the other gender's
-    table. If all their group's tables are full (6 students), they take an extra seat at the
-    least-full one: a new table would leave them sitting alone."""
+    Keeps their level's tables as even as possible, up to 3 students per mentor each: the one with
+    the fewest students, and of those the one with the most mentors. A table at its 3 per mentor
+    is passed over while another of their level is below its own. Once all are there, they spill
+    into the other level's tables the same way. Once those are too, they spread evenly across all
+    their gender's tables: ones with a mentor first, up to 6 students. Never the other gender's
+    table. If every table is full (6 students), they take an extra seat at the least-full one: a
+    new table would leave them sitting alone."""
     same_gender = [i for i, t in enumerate(tables) if student['gender'] and t.get('gender') == student['gender']]
+    if not same_gender:
+        return None
     # Unknown or Other level: any table of their gender will do.
     own_level = [
         i for i in same_gender
         if student['level'] not in STUDENT_LEVELS or tables[i].get('level') in ('', student['level'])
     ]
-    candidates = own_level or same_gender
-    if not candidates:
-        return None
-    with_room = [i for i in candidates if _has_room(tables[i], 'student')]
-    if with_room:
-        candidates = [i for i in with_room if _count(tables[i], 'mentor')] or with_room
-    return min(candidates, key=lambda i: (
-        not _count(tables[i], 'mentor'), _count(tables[i], 'student'), -_count(tables[i], 'mentor'), i,
-    ))
+    other_level = [i for i in same_gender if i not in own_level]
+
+    def emptiest(indexes):
+        return min(indexes, key=lambda i: (_count(tables[i], 'student'), -_count(tables[i], 'mentor'), i))
+
+    for group in (own_level, other_level):
+        below_capacity = [i for i in group if _count(tables[i], 'student') < _capacity(tables[i])]
+        if below_capacity:
+            return emptiest(below_capacity)
+    with_room = [i for i in same_gender if _has_room(tables[i], 'student')]
+    return emptiest([i for i in with_room if _count(tables[i], 'mentor')] or with_room or same_gender)
 
 
 def group_of(students):
@@ -218,18 +231,35 @@ def generate(students, mentors, existing_tables, rng=None):
     return tables
 
 
-def simulate(students, tables, capacity=None, rng=None):
+def _who_comes(students, attendance, rng):
+    """Who turns up. With no `attendance`, each sign-up comes with the chance their contact status
+    gives them. With one, exactly that many come (or everyone, if it's more than signed up):
+    those checked in, then the rest drawn one by one, likelier ones more often."""
+    if attendance is None:
+        return [s for s in students if s['checked_in'] or rng.random() < s['chance']]
+    arrivals = [s for s in students if s['checked_in']]
+    waiting = [s for s in students if not s['checked_in']]
+    while waiting and len(arrivals) < attendance:
+        weights = [s['chance'] for s in waiting]
+        # Out of people with any chance of coming: the rest are equally unlikely.
+        pick = rng.choices(range(len(waiting)), weights if any(weights) else None)[0]
+        arrivals.append(waiting.pop(pick))
+    return arrivals
+
+
+def simulate(students, tables, capacity=None, attendance=None, rng=None):
     """A dry run of the day on the planned tables, to try out the seating rules. Nothing is saved.
 
-    Each sign-up comes with the chance their contact status gives them, in a random order, and is
-    seated by the same rule as check-in. Someone with no gender on the sheet gets one at random,
-    standing in for the door's question. Once the capacity is reached, later arrivals are turned
-    away; people really checked in are already inside. Returns the tables as they'd end up, the
-    students, with those let in marked checked in, and how many were turned away."""
+    Each sign-up comes with the chance their contact status gives them (or `attendance` of them
+    come, see `_who_comes`), in a random order, and is seated by the same rule as check-in. Someone
+    with no gender on the sheet gets one at random, standing in for the door's question. Once the
+    capacity is reached, later arrivals are turned away; people really checked in are already
+    inside. Returns the tables as they'd end up, the students, with those let in marked checked
+    in, and how many were turned away."""
     rng = rng or random.Random()
     tables = [{**t, 'members': list(t['members'])} for t in tables]
     seated = {m['id'] for t in tables for m in t['members'] if m['kind'] == 'student'}
-    arrivals = [s for s in students if s['checked_in'] or rng.random() < s['chance']]
+    arrivals = _who_comes(students, attendance, rng)
     rng.shuffle(arrivals)
     arrivals.sort(key=lambda s: not s['checked_in'])
     came, turned_away = {}, 0

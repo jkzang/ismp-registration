@@ -61,6 +61,14 @@ export function PlayIcon() {
   )
 }
 
+export function ChevronDownIcon() {
+  return (
+    <svg {...base}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  )
+}
+
 export function PlusIcon() {
   return (
     <svg {...base}>

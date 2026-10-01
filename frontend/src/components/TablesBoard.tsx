@@ -13,7 +13,7 @@ import {
 } from '../types'
 import { useUndo } from '../undo'
 import { ConfirmDialog } from './ConfirmDialog'
-import { LockIcon, PlayIcon, PlusIcon, ShuffleIcon, TrashIcon, UnlockIcon } from './icons'
+import { ChevronDownIcon, LockIcon, PlayIcon, PlusIcon, ShuffleIcon, TrashIcon, UnlockIcon } from './icons'
 
 // 3 students per mentor is comfortable, 4 is fine. A table seats 8 at most: 2 mentors and 6 students.
 const IDEAL_PER_MENTOR = 3
@@ -192,6 +192,10 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
   // A pretend check-in shown in place of the saved board. The board can't be edited while it's up.
   const [simulation, setSimulation] = useState<Simulation | null>(null)
   const [simulating, setSimulating] = useState(false)
+  // How many come in the simulation, as typed. Blank is a random turnout.
+  const [attendance, setAttendance] = useState('')
+  const [settingAttendance, setSettingAttendance] = useState(false)
+  const simulateRef = useRef<HTMLSpanElement>(null)
   const plan = simulation ? { ...savedPlan, ...simulation } : savedPlan
   const [removing, setRemoving] = useState<SeatingTable | null>(null)
   const { push } = useUndo()
@@ -216,6 +220,7 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
     .filter((s) => s.checked_in && !seated.has(`student:${s.id}`))
     .map((s) => asMember('student', s.id))
 
+  const expectedTurnout = Math.round(plan.expected.reduce((sum, e) => sum + e.count, 0))
   const simulated = {
     came: plan.students.filter((s) => s.checked_in).length,
     over: plan.tables.filter((t) => t.members.filter((m) => m.kind === 'student').length > MAX_STUDENTS).length,
@@ -320,7 +325,7 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
   async function simulate() {
     setSimulating(true)
     try {
-      setSimulation(await api.simulatePlan(sheetId))
+      setSimulation(await api.simulatePlan(sheetId, attendance === '' ? null : Number(attendance)))
       setError(null)
     } catch (err) {
       setError(errorMessage(err, 'Could not run the simulation'))
@@ -328,6 +333,22 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
       setSimulating(false)
     }
   }
+
+  useEffect(() => {
+    if (!settingAttendance) return
+    const onPointer = (e: PointerEvent) => {
+      if (!simulateRef.current?.contains(e.target as Node)) setSettingAttendance(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSettingAttendance(false)
+    }
+    document.addEventListener('pointerdown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [settingAttendance])
 
   const chipFor = (member: TableMember, tableId?: string) => (
     <PersonChip
@@ -375,15 +396,63 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
             <ShuffleIcon /> {generating ? 'Planning…' : plan.tables.length > 0 ? 'Re-plan' : 'Plan tables'}
           </button>
         </span>
-        <button
-          type="button"
-          className="with-icon"
-          onClick={simulate}
-          disabled={simulating || plan.tables.length === 0}
-          title="Pretend it's the day: a random turnout checks in, up to capacity, and is seated by the check-in rules. Nothing is saved."
-        >
-          <PlayIcon /> {simulating ? 'Simulating…' : simulation ? 'Simulate again' : 'Simulate'}
-        </button>
+        <span className="dg-simulate" ref={simulateRef}>
+          <button
+            type="button"
+            className="with-icon"
+            onClick={simulate}
+            disabled={simulating || plan.tables.length === 0}
+            title={`Pretend it's the day: ${attendance === '' ? 'a random turnout checks' : `${attendance} sign-ups check`} in, up to capacity, and ${attendance === '' ? 'is' : 'are'} seated by the check-in rules. Nothing is saved.`}
+          >
+            <PlayIcon /> {simulating ? 'Simulating…' : simulation ? 'Simulate again' : 'Simulate'}
+            {attendance !== '' && <span className="dg-simulate-count">{attendance}</span>}
+          </button>
+          <button
+            type="button"
+            className="dg-simulate-more"
+            aria-label="Set how many come in the simulation"
+            aria-expanded={settingAttendance}
+            title="Set how many come"
+            onClick={() => setSettingAttendance((open) => !open)}
+            disabled={plan.tables.length === 0}
+          >
+            <ChevronDownIcon />
+          </button>
+          {settingAttendance && (
+            <form
+              className="dg-simulate-menu"
+              role="dialog"
+              aria-label="Simulated attendance"
+              onSubmit={(e) => {
+                e.preventDefault()
+                setSettingAttendance(false)
+                simulate()
+              }}
+            >
+              <label htmlFor="dg-attendance">How many come</label>
+              <div className="dg-simulate-row">
+                <input
+                  id="dg-attendance"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={plan.students.length}
+                  step={1}
+                  autoFocus
+                  placeholder={`Random, about ${expectedTurnout}`}
+                  value={attendance}
+                  onChange={(e) => setAttendance(e.target.value.replace(/\D/g, ''))}
+                />
+                <button type="submit" className="primary" disabled={simulating}>
+                  Simulate
+                </button>
+              </div>
+              <p className="muted">
+                Of {plan.students.length} sign-ups. Likelier ones are picked more often. Leave it blank for a random turnout.
+              </p>
+            </form>
+          )}
+        </span>
         <button type="button" className="with-icon" onClick={addTable} disabled={!!simulation}>
           <PlusIcon /> Table
         </button>
