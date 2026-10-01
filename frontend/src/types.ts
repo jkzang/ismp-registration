@@ -126,9 +126,24 @@ export type Simulation = Pick<SeatingPlan, 'tables' | 'students'> & {
   }
 }
 
+/** How the planned tables hold up over many pretend check-ins, in penalty points a day: lower is better. */
+export type PlanScore = {
+  days: number
+  /** The fewest and the most who came on those days. */
+  turnout: [number, number]
+  average: number
+  /** The average over the worst tenth of the days. */
+  worst: number
+  /** The average points a day from each way a seat goes wrong. */
+  causes: Record<'no_table' | 'past_max' | 'alone' | 'lone_gender' | 'past_ideal' | 'other_level' | 'empty_table' | 'lone_mentor', number>
+}
+
 export type SeatedTable ={ id: string; name: string; mentors: string[] }
 
 export type CheckInResult = { student: PlanStudent; table: SeatedTable | null }
+
+/** What the tables are planned from in the sign-ups: who signed up, their group, and how likely each is to come. */
+export const signupsKey = (plan: SeatingPlan) => plan.students.map((s) => `${s.id}${s.gender}${s.level}${s.chance}`).join()
 
 /** What a sheet is called in the app: its given name, else its tab's title. */
 export const sheetName = (sheet: Sheet) => sheet.name || sheet.tab_title

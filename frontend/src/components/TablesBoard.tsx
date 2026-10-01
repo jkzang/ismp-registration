@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { api, errorMessage } from '../api'
 import {
+  signupsKey,
   type TableLevel,
   type PlanMentor,
+  type PlanScore,
   type PlanStudent,
   type SeatingPlan,
   type SeatingTable,
@@ -35,6 +37,18 @@ const GROUP_OPTIONS: { value: string; label: string }[] = [
   { value: 'coed:undergrad', label: 'Coed UG' },
   { value: 'coed:grad', label: 'Coed Grad' },
   { value: ':', label: 'No group' },
+]
+
+// What the plan's score counts, in the order shown when several add to it.
+const SCORE_CAUSES: [keyof PlanScore['causes'], string][] = [
+  ['no_table', 'students with no table to sit at'],
+  ['past_max', `tables past ${MAX_STUDENTS} students`],
+  ['alone', 'students alone at a table'],
+  ['lone_gender', 'students who are the only one of their gender at a coed table'],
+  ['past_ideal', `students past ${IDEAL_PER_MENTOR} per mentor`],
+  ['other_level', 'students at the other level’s table'],
+  ['empty_table', 'tables nobody comes to'],
+  ['lone_mentor', 'tables led by one mentor'],
 ]
 
 /** Why a table can't take one more of this kind, or null if it can. */
@@ -198,10 +212,13 @@ function useTableGrid(count: number) {
   return { ref, cols, rows: Math.max(1, Math.ceil(count / cols)) }
 }
 
-export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
+export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged, onReplanAnswered }: {
   sheetId: number
   plan: SeatingPlan
   setPlan: (plan: SeatingPlan) => void
+  /** A re-sync just changed the sign-ups the tables were planned for: asks whether to re-plan. */
+  signupsChanged: boolean
+  onReplanAnswered: () => void
 }) {
   const [error, setError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
@@ -214,6 +231,8 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
   const [settingAttendance, setSettingAttendance] = useState(false)
   const simulateRef = useRef<HTMLSpanElement>(null)
   const plan = simulation ? { ...savedPlan, ...simulation } : savedPlan
+  // How the saved tables hold up over many pretend check-ins.
+  const [score, setScore] = useState<PlanScore | null>(null)
   const [removing, setRemoving] = useState<SeatingTable | null>(null)
   const { push } = useUndo()
   const [dragOver, setDragOver] = useState<string | null>(null)
@@ -232,6 +251,26 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
   // Re-planning would move mentors away from students already told their table. The first plan
   // is still allowed, in case check-in began before anyone planned.
   const checkInStarted = savedPlan.tables.length > 0 && savedPlan.students.some((s) => s.checked_in)
+  // Scored again whenever the tables are saved or the sign-ups change (a re-sync), since both move it.
+  const scored = savedPlan.tables.length > 0 && !checkInStarted
+  const signups = signupsKey(savedPlan)
+  useEffect(() => {
+    if (!scored) return
+    let stale = false
+    api
+      .scorePlan(sheetId)
+      .then((next) => !stale && setScore(next))
+      .catch(() => !stale && setScore(null))
+    return () => {
+      stale = true
+    }
+  }, [sheetId, scored, signups, savedPlan.updated_at])
+  const scoreCauses = score
+    ? SCORE_CAUSES.filter(([cause]) => score.causes[cause] > 0)
+        .sort(([a], [b]) => score.causes[b] - score.causes[a])
+        .map(([cause, label]) => `${score.causes[cause]} from ${label}`)
+    : []
+
   const unseatedMentors = attendingMentors.filter((m) => !seated.has(`mentor:${m.id}`)).map((m) => asMember('mentor', m.id))
   const unseatedStudents = plan.students
     .filter((s) => s.checked_in && !seated.has(`student:${s.id}`))
@@ -340,8 +379,10 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
 
   async function generate() {
     setConfirmingReplan(false)
+    onReplanAnswered()
+    setSimulation(null)
     setGenerating(true)
-    const previous = plan
+    const previous = savedPlan
     try {
       const next = await api.generatePlan(sheetId)
       setPlan(next)
@@ -419,6 +460,16 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
         onClose={() => setConfirmingReplan(false)}
       >
         Checked-in and locked people keep their table. Everyone else is rearranged.
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={signupsChanged && !checkInStarted}
+        title="Re-plan the tables for the new sign-ups?"
+        confirmLabel="Re-plan"
+        onConfirm={generate}
+        onClose={onReplanAnswered}
+      >
+        The re-sync changed who’s signed up or how likely they are to come, and the tables were planned for the sign-ups
+        as they were. Checked-in and locked people keep their table. Everyone else is rearranged.
       </ConfirmDialog>
       <ConfirmDialog
         open={removing !== null}
@@ -581,6 +632,13 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan }: {
           <button type="button" onClick={() => setSimulation(null)}>
             Back to the plan
           </button>
+        </p>
+      )}
+      {score && scored && !simulation && (
+        <p className="dg-score" role="status">
+          <strong>{score.average}</strong> penalty points on an average day, {score.worst} on the worst, over {score.days}{' '}
+          pretend check-ins with {score.turnout[0]} to {score.turnout[1]} coming.
+          {scoreCauses.length > 0 && ` Mostly ${scoreCauses.slice(0, 3).join(', ')}.`} Lower is better.
         </p>
       )}
 

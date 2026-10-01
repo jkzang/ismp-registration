@@ -13,6 +13,7 @@ import type {
   SeatingTable,
   Sheet,
   SheetRows,
+  PlanScore,
   Simulation,
 } from './types'
 
@@ -95,6 +96,7 @@ export const api = {
   /** `attendance` is how many come; without it the turnout is random. */
   simulatePlan: (sheetId: number, attendance: number | null) =>
     post<Simulation>(`/sheets/${sheetId}/plan/simulate/`, { attendance }),
+  scorePlan: (sheetId: number) => request<PlanScore>(`/sheets/${sheetId}/plan/score/`),
 
   checkIn: (signupId: number, door: { gender?: Gender; level?: Level } = {}) =>
     post<CheckInResult>(`/signups/${signupId}/check-in/`, door),

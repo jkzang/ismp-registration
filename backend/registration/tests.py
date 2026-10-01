@@ -544,6 +544,122 @@ class TablePlanningTests(SeatingBase):
         self.assertEqual(data['tables'][0]['members'], [{'kind': 'student', 'id': a.id, 'locked': False}])
 
 
+class ScoringTests(SeatingBase):
+    GIRL, GUY, GRAD_GIRL = ('female', 'undergrad'), ('male', 'undergrad'), ('female', 'grad')
+
+    def score(self, mentors, came, gender='female', level='undergrad'):
+        """The points, by cause, for one table led by that many mentors where `came` sit, each a (gender, level)."""
+        students = [{'id': i, 'gender': g, 'level': l} for i, (g, l) in enumerate(came)]
+        members = [{'kind': 'mentor', 'id': i} for i in range(mentors)]
+        members += [{'kind': 'student', 'id': s['id']} for s in students]
+        points = seating.score_room([{'gender': gender, 'level': level, 'members': members}], students)
+        return {cause: n for cause, n in points.items() if n}
+
+    def test_a_crowded_table_costs_more_the_fewer_mentors_it_has(self):
+        self.assertEqual(self.score(1, [self.GIRL] * 3), {'lone_mentor': 1})
+        self.assertEqual(self.score(2, [self.GIRL] * 6), {})
+        self.assertEqual(self.score(1, [self.GIRL] * 5), {'past_ideal': 4, 'lone_mentor': 1})
+        self.assertEqual(self.score(2, [self.GIRL] * 7), {'past_max': 5})
+        self.assertEqual(self.score(1, [self.GIRL] * 7), {'past_ideal': 6, 'past_max': 5, 'lone_mentor': 1})
+        # One table of 8 is worse than two of 7.
+        self.assertEqual(self.score(2, [self.GIRL] * 8), {'past_max': 20})
+
+    def test_sitting_alone_or_with_the_other_level_costs_points(self):
+        self.assertEqual(self.score(1, [self.GIRL]), {'alone': 4, 'lone_mentor': 1})
+        self.assertEqual(self.score(1, []), {'empty_table': 1})
+        self.assertEqual(self.score(0, []), {})
+        self.assertEqual(self.score(2, [self.GIRL, self.GUY, self.GUY], gender='coed'), {'lone_gender': 3})
+        self.assertEqual(self.score(2, [self.GIRL, self.GIRL, self.GRAD_GIRL]), {'other_level': 1})
+        self.assertEqual(self.score(2, [self.GIRL, self.GIRL, self.GRAD_GIRL], level=''), {'other_level': 1})
+
+    def test_students_with_no_table_cost_the_most(self):
+        came = [{'id': i, 'gender': 'male', 'level': 'grad'} for i in range(2)]
+        self.assertEqual(seating.score_room([], came)['no_table'], 20)
+
+    def score_plan(self):
+        return self.client.get(f'/api/sheets/{self.sheet.id}/plan/score/').data
+
+    def test_plan_is_scored_over_turnouts_around_the_expected_one_and_saves_nothing(self):
+        self.add_students(12, 'female', 'undergrad')  # 10.2 expected
+        self.add_mentor('Mia', 'female')
+        self.generate()
+        data = self.score_plan()
+        # 5 either side of 10, but no more than signed up.
+        self.assertEqual((data['turnout'], data['days']), ([5, 12], 8 * seating.DAYS_PER_TURNOUT))
+        # One mentor for everyone: every day has students past 3 per mentor.
+        self.assertGreater(data['causes']['past_ideal'], 0)
+        self.assertGreaterEqual(data['worst'], data['average'])
+        self.assertAlmostEqual(sum(data['causes'].values()), data['average'], delta=0.5)
+        # The same pretend days each time.
+        self.assertEqual(self.score_plan(), data)
+        self.assertEqual(self.seated_students(self.plan()), [[]])
+        self.assertEqual(models.Signup.objects.filter(checked_in_at__isnull=False).count(), 0)
+
+    def test_more_mentors_score_better(self):
+        self.add_students(12, 'female', 'undergrad')
+        self.add_mentor('Mia', 'female')
+        self.generate()
+        short_staffed = self.score_plan()['average']
+        for name in ('Ava', 'Zoe', 'Ivy'):
+            self.add_mentor(name, 'female')
+        self.generate()
+        self.assertLess(self.score_plan()['average'], short_staffed)
+
+
+    def mentors_by_table(self, data):
+        names = {m['id']: m['name'] for m in data['mentors']}
+        return [(t['gender'], sorted(names[m['id']] for m in t['members'] if m['kind'] == 'mentor')) for t in data['tables']]
+
+    def test_re_plan_opens_a_table_for_spare_mentors_when_the_days_call_for_it(self):
+        self.add_students(14, 'female', 'undergrad')  # 11.9 expected: two tables, too few when 13 or 14 come
+        for name in ('Mia', 'Ava', 'Zoe', 'Ivy', 'Amy', 'Eve'):
+            self.add_mentor(name, 'female')
+        students, mentors = seating.attendees(self.sheet)
+        self.assertEqual(len(seating.generate(students, mentors, [])), 2)
+        data = self.generate()
+        self.assertEqual(self.groups(data), [('female', 'undergrad')] * 3)
+        self.assertEqual([len(mentors) for _, mentors in self.mentors_by_table(data)], [2, 2, 2])
+        self.assertEqual(self.seated_students(data), [[], [], []])
+        self.assertEqual(self.score_plan()['average'], 0)
+
+    def test_re_plan_makes_a_coed_table_when_it_scores_better(self):
+        self.add_students(4, 'female', 'undergrad')
+        self.add_students(14, 'male', 'undergrad')
+        for name, gender in (('Ann Lee', 'female'), ('Mia Stone', 'female'), ('Tom Lee', 'male'), ('Sam Park', 'male')):
+            self.add_mentor(name, gender)
+        students, mentors = seating.attendees(self.sheet)
+        days = seating.pretend_days(students, self.sheet.capacity, random.Random(self.sheet.id))
+        draft = seating.evaluate(seating.generate(students, mentors, []), students, days)['average']
+        data = self.generate()
+        # The guys' two tables had a mentor each; Ann joins her husband's, so it can take six.
+        self.assertIn(('coed', ['Ann Lee', 'Tom Lee']), self.mentors_by_table(data))
+        self.assertLess(self.score_plan()['average'], draft)
+
+    def test_re_plan_merges_two_small_tables_into_one_for_both_levels(self):
+        self.add_students(3, 'female', 'undergrad')
+        self.add_students(2, 'female', 'grad')
+        for name in ('Mia', 'Ava'):
+            self.add_mentor(name, 'female')
+        students, mentors = seating.attendees(self.sheet)
+        self.assertEqual(len(seating.generate(students, mentors, [])), 2)
+        # A table each would often leave one grad sitting alone.
+        data = self.generate()
+        self.assertEqual(self.groups(data), [('female', '')])
+        self.assertEqual(self.mentors_by_table(data), [('female', ['Ava', 'Mia'])])
+
+    def test_re_plan_keeps_locked_people_and_the_plan_as_drawn_when_nothing_scores_better(self):
+        students = self.add_students(6, 'female', 'grad')
+        mentor = self.add_mentor('Mia', 'female')
+        tables = self.generate()['tables']
+        tables[0]['members'] = [
+            {'kind': 'mentor', 'id': mentor.id, 'locked': True}, {'kind': 'student', 'id': students[0].id, 'locked': True},
+        ]
+        self.save_plan({'tables': tables})
+        data = self.generate()
+        self.assertEqual(self.groups(data), [('female', 'grad')])
+        self.assertEqual(data['tables'][0]['members'], tables[0]['members'])
+
+
 class CoedTableTests(SeatingBase):
     def simulate(self, attendance):
         return self.client.post(

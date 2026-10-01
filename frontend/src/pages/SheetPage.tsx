@@ -11,7 +11,7 @@ import { getAccessToken, NoAccessError, pickSpreadsheet, readDatabaseTab, readTa
 import { toLocalInput } from '../localTime'
 import { importWarnings } from '../sheetParser'
 import { parseWithDatabase } from '../studentDatabase'
-import { sheetName, type SeatingPlan, type Sheet } from '../types'
+import { sheetName, signupsKey, type SeatingPlan, type Sheet } from '../types'
 import { useUndo } from '../undo'
 import { RESERVE_MINUTES } from '../capacity'
 
@@ -254,6 +254,8 @@ export function SheetPage() {
   const [plan, setPlan] = useState<SeatingPlan | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [resyncing, setResyncing] = useState(false)
+  // A re-sync changed the sign-ups the tables were planned for, and nobody has answered whether to re-plan.
+  const [signupsChanged, setSignupsChanged] = useState(false)
   const attendance = useAttendanceSync(config, sheet, plan)
   // Narrow screens show one panel at a time.
   const [panel, setPanel] = useState<'checkin' | 'tables'>('checkin')
@@ -271,6 +273,7 @@ export function SheetPage() {
     setSheet(null)
     setPlan(null)
     setError(null)
+    setSignupsChanged(false)
     const refresh = () =>
       load().catch((err) => {
         if (!active) return
@@ -323,7 +326,11 @@ export function SheetPage() {
         warnings: importWarnings(parsed),
       })
       setSheet(result.sheet)
-      setPlan(await api.getPlan(sheet.id))
+      const next = await api.getPlan(sheet.id)
+      setPlan(next)
+      // Once check-in starts the tables are set, so there's nothing to ask.
+      const planned = next.tables.length > 0 && !next.students.some((s) => s.checked_in)
+      setSignupsChanged(planned && !!plan && signupsKey(next) !== signupsKey(plan))
       const changes = [
         result.added && `${result.added} added`,
         result.removed && `${result.removed} removed`,
@@ -394,7 +401,13 @@ export function SheetPage() {
           onAttendance={attendance.record}
           onSheetChange={setSheet}
         />
-        <TablesBoard sheetId={sheet.id} plan={plan} setPlan={setPlan} />
+        <TablesBoard
+          sheetId={sheet.id}
+          plan={plan}
+          setPlan={setPlan}
+          signupsChanged={signupsChanged}
+          onReplanAnswered={() => setSignupsChanged(false)}
+        />
       </div>
       {explainFirstPlan && (
         <FirstPlanDialog

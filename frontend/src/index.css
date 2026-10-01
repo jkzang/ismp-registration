@@ -1838,6 +1838,16 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
   padding: 0 12px;
 }
 
+.dg-score {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.dg-score strong {
+  color: var(--text);
+}
+
 .dg-tray {
   flex: 1;
   min-width: 0;

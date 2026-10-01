@@ -1,3 +1,5 @@
+import random
+
 from django.conf import settings
 from django.contrib.auth import get_user_model, login, logout
 from django.db import transaction
@@ -208,7 +210,9 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
             if not absent <= {m['id'] for m in mentors}:
                 raise drf_serializers.ValidationError('Only mentors in this chapter can be marked as absent.')
             plan = models.SeatingPlan.objects.create(
-                sheet=sheet, tables=seating.generate(students, [m for m in mentors if m['id'] not in absent], []),
+                sheet=sheet, tables=seating.best_tables(
+                    students, [m for m in mentors if m['id'] not in absent], [], self._pretend_days(sheet, students),
+                ),
             )
             plan.excluded_mentors.set(absent)
         return Response(self.get_serializer(self.get_queryset().get(pk=sheet.pk)).data, status=status.HTTP_201_CREATED)
@@ -233,6 +237,11 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
         # Locked so a board save, re-plan or re-sync can't overwrite a seat handed out at check-in.
         models.SeatingPlan.objects.get_or_create(sheet=sheet)
         return models.SeatingPlan.objects.select_for_update().get(sheet=sheet)
+
+    def _pretend_days(self, sheet, students):
+        # The same days every time, so a plan's score moves only when the sign-ups or the tables do,
+        # and Re-plan picks by the score the board shows.
+        return seating.pretend_days(students, sheet.capacity, random.Random(sheet.id))
 
     @action(detail=True, methods=['get', 'put'])
     def plan(self, request, pk=None):
@@ -268,7 +277,9 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
                 raise drf_serializers.ValidationError('Check-in has started, so the tables can’t be re-planned.')
             students, mentors = seating.attendees(sheet)
             excluded = set(plan.excluded_mentors.values_list('id', flat=True))
-            plan.tables = seating.generate(students, [m for m in mentors if m['id'] not in excluded], plan.tables)
+            plan.tables = seating.best_tables(
+                students, [m for m in mentors if m['id'] not in excluded], plan.tables, self._pretend_days(sheet, students),
+            )
             plan.save()
         return Response(seating.plan_payload(plan))
 
@@ -287,6 +298,15 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
         return Response(seating.simulate(
             payload['students'], attending, payload['tables'], sheet.capacity, details.validated_data.get('attendance'),
         ))
+
+    @action(detail=True, methods=['get'], url_path='plan/score')
+    def score_plan(self, request, pk=None):
+        """How the current tables would hold up over many pretend check-ins. Saves nothing."""
+        sheet = self.get_object()
+        plan, _ = models.SeatingPlan.objects.get_or_create(sheet=sheet)
+        payload = seating.plan_payload(plan)
+        students = payload['students']
+        return Response(seating.evaluate(payload['tables'], students, self._pretend_days(sheet, students)))
 
 
 class SignupViewSet(ChapterScoped, viewsets.GenericViewSet):

@@ -17,18 +17,31 @@ const about = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
 function groupLines(plan: SeatingPlan) {
   const excluded = new Set(plan.excluded_mentor_ids)
   const mentors = plan.mentors.filter((m) => !excluded.has(m.id))
+  // The plan is the arrangement that held up best over many pretend check-ins, which can differ from a table per 6 expected.
+  const HELD_UP = 'held up better over the pretend check-ins'
+  const coed = plan.tables.filter((t) => t.gender === 'coed').length
+  const coedLines = coed
+    ? [{
+        key: 'coed',
+        title: `Coed: ${plural(coed, 'table')}`,
+        reason: `Led by a married couple, for guys and girls of one level. It ${HELD_UP} than seating the couple apart.`,
+      }]
+    : []
   return GENDERS.flatMap(({ value: gender, label }) => {
     const groups = plan.expected.filter((e) => e.gender === gender)
     const tables = plan.tables.filter((t) => t.gender === gender)
     const mentorCount = mentors.filter((m) => m.gender === gender).length
     const mentorText = plural(mentorCount, `${gender} mentor`)
     const shared = tables.filter((t) => t.level === '').length
+    const enoughMentors = mentorCount >= groups.reduce((sum, e) => sum + e.tables_wanted, 0)
     if (shared > 0) {
       const turnout = groups.map((e) => `${about(e.count)} ${LEVEL_LABELS[e.level]}`).join(' and ')
       return [{
         key: gender,
         title: `${label}: ${plural(shared, 'table')} for both levels`,
-        reason: `About ${turnout} expected, which calls for a table each. With only ${mentorText}, undergrads and grads share.`,
+        reason: mentorCount < groups.filter((e) => e.tables_wanted > 0).length
+          ? `About ${turnout} expected, which calls for a table each. With only ${mentorText}, undergrads and grads share.`
+          : `About ${turnout} expected. Undergrads and grads sharing ${HELD_UP} than a table each.`,
       }]
     }
     return groups.filter((e) => e.count > 0).map((e) => {
@@ -38,6 +51,8 @@ function groupLines(plan: SeatingPlan) {
       let reason: string
       if (e.tables_wanted === 0) {
         reason = `${expected}, under one person, so no table of their own. Anyone who comes sits with the other ${label.toLowerCase()}.`
+      } else if (got !== e.tables_wanted && enoughMentors) {
+        reason = `${expected}, which calls for ${e.tables_wanted} at ${MAX_STUDENTS} students a table. ${got > e.tables_wanted ? 'More' : 'Fewer'} ${HELD_UP}.`
       } else if (got < e.tables_wanted) {
         reason = `${expected}, which calls for ${e.tables_wanted} at ${MAX_STUDENTS} students a table. There ${mentorCount === 1 ? 'is' : 'are'} only ${mentorText} and each table needs one, so check-in will squeeze extra students in.`
       } else if (mentorCount === 0) {
@@ -47,7 +62,7 @@ function groupLines(plan: SeatingPlan) {
       }
       return { key: `${gender}:${e.level}`, title, reason }
     })
-  })
+  }).concat(coedLines)
 }
 
 /** Shown once, right after an import: how the first table plan follows from who's expected. */
