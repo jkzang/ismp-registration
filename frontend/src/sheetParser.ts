@@ -18,6 +18,7 @@ export type ContactStatus =
   | 'no_response'
   | 'not_coming'
   | 'no_room'
+  | 'no_space'
   | 'not_inviting'
 
 export type FieldKey =
@@ -179,6 +180,7 @@ const STATUS_BY_TEXT: Record<string, ContactStatus> = {
   'no response': 'no_response',
   'not coming': 'not_coming',
   'no room': 'no_room',
+  'no space': 'no_space',
   'not inviting': 'not_inviting',
 }
 
@@ -289,7 +291,7 @@ const quote = (values: string[]) => {
 
 /** Anything about the tab worth a second look, in plain words. Empty when it's formatted as expected. */
 export function importWarnings(parsed: ParseResult): string[] {
-  const { columns, rows, unrecognized, missing } = parsed
+  const { columns, unrecognized, missing } = parsed
   const warnings: string[] = []
   if (columns.gender === undefined) warnings.push('No Gender column found, so check-in will ask everyone.')
   else if (missing.gender) {
@@ -304,10 +306,6 @@ export function importWarnings(parsed: ParseResult): string[] {
   if (columns.status === undefined) warnings.push('No Contact Status column found, so everyone counts as Not contacted.')
   else if (unrecognized.status.length) {
     warnings.push(`Unrecognized contact statuses ${quote(unrecognized.status)} count as Not contacted.`)
-  }
-  const others = rows.filter((r) => r.level === 'other').length
-  if (others) {
-    warnings.push(`${plural(others, 'sign-up has', 'sign-ups have')} enrollment Other: not planned for, and check-in asks before admitting them.`)
   }
   return warnings
 }

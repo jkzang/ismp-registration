@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useLocation, useNavigate, useParams } from 'react-router'
 import { api, ApiError, errorMessage } from '../api'
 import { useApp } from '../appContext'
 import { CheckInPanel } from '../components/CheckInPanel'
@@ -246,8 +246,11 @@ export function SheetPage() {
   const { config, refreshSheets } = useApp()
   const { notify } = useUndo()
   const navigate = useNavigate()
-  const [sheet, setSheet] = useState<Sheet | null>(null)
-  const [plan, setPlan] = useState<SeatingPlan | null>(null)
+  // A fresh import hands over the sheet and plan it just loaded, so the page doesn't blank out to load them again.
+  const state = useLocation().state as { sheet: Sheet; plan: SeatingPlan } | null
+  const preloaded = state?.sheet?.id === sheetId ? state : null
+  const [sheet, setSheet] = useState<Sheet | null>(preloaded?.sheet ?? null)
+  const [plan, setPlan] = useState<SeatingPlan | null>(preloaded?.plan ?? null)
   const [error, setError] = useState<string | null>(null)
   const [resyncing, setResyncing] = useState(false)
   // A re-sync changed the sign-ups the tables were planned for, and nobody has answered whether to re-plan.
@@ -266,8 +269,8 @@ export function SheetPage() {
 
   useEffect(() => {
     let active = true
-    setSheet(null)
-    setPlan(null)
+    setSheet(preloaded?.sheet ?? null)
+    setPlan(preloaded?.plan ?? null)
     setError(null)
     setSignupsChanged(false)
     const refresh = () =>
@@ -282,7 +285,7 @@ export function SheetPage() {
       active = false
       clearInterval(timer)
     }
-  }, [load, navigate])
+  }, [load, navigate, preloaded])
 
   /** Runs a Google Sheets call, first getting a token (call from a click, for the popup). Null if
    *  the person closes the Picker. */
@@ -365,13 +368,13 @@ export function SheetPage() {
           <CapacityField sheet={sheet} onSaved={setSheet} />
           <button
             type="button"
-            className={`with-icon${resyncing ? ' is-syncing' : ''}`}
+            className={`with-icon resync-button${resyncing ? ' is-syncing' : ''}`}
             onClick={resync}
             disabled={resyncing}
             aria-busy={resyncing}
             title={resyncing ? 'Syncing…' : 'Pull new sign-ups from Google Sheets'}
           >
-            {/* Same label while syncing, so the buttons beside it don't shift. */}
+            {/* Same label and a fixed width while syncing, so the buttons beside it don't shift. */}
             <RefreshIcon /> Re-sync
           </button>
         </div>

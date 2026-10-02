@@ -28,6 +28,9 @@ export function isReleased(sheet: Pick<Sheet, 'starts_at' | 'reserved_released_a
   return !!sheet.reserved_released_at || (until !== null && now >= until.getTime())
 }
 
+/** "No space" sign-ups are only listed by name: they're left out of every count unless they check in. */
+export const isCounted = (p: Pick<Person, 'status' | 'checked_in'>) => p.checked_in || p.status !== 'no_space'
+
 const isConfirmed = (p: Person) => p.status === 'confirmed'
 
 /** Until the release, a confirmed person never waits: their spot is reserved. */

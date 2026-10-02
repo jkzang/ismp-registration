@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { api, errorMessage } from '../api'
-import { doorAction, doorCounts, isReleased, reservedUntil, waitlistChance, waitlistOf, type DoorAction, type DoorCounts } from '../capacity'
+import { doorAction, doorCounts, isCounted, isReleased, reservedUntil, waitlistChance, waitlistOf, type DoorAction, type DoorCounts } from '../capacity'
 import { useUndo } from '../undo'
 import { CONTACT_STATUSES, type ContactStatus, type Gender, type Level, type PlanStudent, type SeatedTable, type SeatingPlan, type Sheet } from '../types'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -173,6 +173,7 @@ export function CheckInPanel({ sheet, plan, onChange, onReload, onAttendance, on
   const hasTables = plan.tables.length > 0
 
   const people = [...plan.students].sort((a, b) => a.name.localeCompare(b.name))
+  const signedUp = people.filter(isCounted).length
   const waitlist = waitlistOf(people, released)
   const counts = doorCounts(people, sheet.capacity, released)
   // Strict order: only the front of the line is let in, one at a time.
@@ -355,7 +356,7 @@ export function CheckInPanel({ sheet, plan, onChange, onReload, onAttendance, on
         Their enrollment is Other, so they’re not a student.
       </ConfirmDialog>
       <div className="checkin-top">
-        <SpotsBanner counts={counts} capacity={sheet.capacity} total={people.length} released={released}>
+        <SpotsBanner counts={counts} capacity={sheet.capacity} total={signedUp} released={released}>
           {sheet.capacity !== null && (
             <Reservation sheet={sheet} counts={counts} released={released} now={now} onRelease={() => setConfirmingRelease(true)} />
           )}
@@ -409,7 +410,7 @@ export function CheckInPanel({ sheet, plan, onChange, onReload, onAttendance, on
         {showTabs && (
           <div className="segmented checkin-tabs" role="tablist" aria-label="List">
             <button type="button" role="tab" aria-selected={!onWaitlistTab} className={onWaitlistTab ? '' : 'is-on'} onClick={() => setTab('all')}>
-              Check-in <span className="tab-count">{people.length}</span>
+              Check-in <span className="tab-count">{signedUp}</span>
             </button>
             <button type="button" role="tab" aria-selected={onWaitlistTab} className={onWaitlistTab ? 'is-on' : ''} onClick={() => setTab('waitlist')}>
               Waitlist <span className="tab-count">{waitlist.length}</span>

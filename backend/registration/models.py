@@ -29,6 +29,8 @@ class ContactStatus(models.TextChoices):
     NO_RESPONSE = 'no_response', 'No response'
     NOT_COMING = 'not_coming', 'Not coming'
     NO_ROOM = 'no_room', 'No room'
+    # Listed by name only: left out of the turnout, the simulation and every count unless they check in.
+    NO_SPACE = 'no_space', 'No space'
     NOT_INVITING = 'not_inviting', 'Not inviting'
 
 

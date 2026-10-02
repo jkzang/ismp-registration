@@ -132,10 +132,10 @@ export default function App() {
           <ImportDialog
             start={importing}
             onClose={() => setImporting(null)}
-            onImported={(sheet) => {
+            onImported={(sheet, plan) => {
               setImporting(null)
               refreshSheets().catch(() => {})
-              navigate(`/sheets/${sheet.id}`)
+              navigate(`/sheets/${sheet.id}`, plan ? { state: { sheet, plan } } : undefined)
             }}
           />
         )}

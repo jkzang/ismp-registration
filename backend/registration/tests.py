@@ -375,6 +375,18 @@ class TablePlanningTests(SeatingBase):
         self.assertEqual(len(data['students']), 40)
         self.assertEqual(sum(e['count'] for e in data['expected']), 0)
 
+    def test_no_space_is_listed_but_never_drawn_to_come(self):
+        self.add_students(3, 'female', 'grad', status='confirmed')
+        self.add_students(5, 'female', 'grad', status='no_space')
+        data = self.plan()
+        self.assertEqual(len(data['students']), 8)
+        self.assertAlmostEqual(sum(e['count'] for e in data['expected']), 3 * 0.85, places=1)
+        came = seating._who_comes(data['students'], 8, random.Random(1))
+        self.assertEqual({s['status'] for s in came}, {'confirmed'})
+        self.assertEqual(len(came), 3)
+        response = self.client.post('/api/sheets/', import_body([row('k1', 'Pat', status='no_space')]), format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
     def test_new_statuses_can_be_imported(self):
         rows = [row(f'k{i}', f'P{i}', status=s) for i, s in enumerate(('waiting_to_contact', 'not_coming', 'no_room'))]
         response = self.client.post('/api/sheets/', import_body(rows), format='json')

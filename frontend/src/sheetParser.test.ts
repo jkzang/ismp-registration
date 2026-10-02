@@ -124,7 +124,6 @@ describe('importWarnings', () => {
       '2 sign-ups have no gender (unrecognized: “Prefer not to say”), so check-in will ask.',
       '1 sign-up has no enrollment status (unrecognized: “Alumni”), so check-in will ask.',
       'Unrecognized contact statuses “Maybe” count as Not contacted.',
-      '1 sign-up has enrollment Other: not planned for, and check-in asks before admitting them.',
     ])
     const bare = [['Name', 'Nickname'], ['Amy Lin', '']]
     expect(importWarnings(parseSheet(bare))).toEqual([
@@ -147,8 +146,8 @@ describe('value normalizers', () => {
     expect(['Confirmed', ' awaiting  response ', '', 'nope'].map(statusOf)).toEqual([
       'confirmed', 'awaiting_response', 'not_contacted', null,
     ])
-    expect(['Not Contacted', 'Waiting To Contact', 'Not Coming', 'No Room', 'Not inviting'].map(statusOf)).toEqual([
-      'not_contacted', 'waiting_to_contact', 'not_coming', 'no_room', 'not_inviting',
+    expect(['Not Contacted', 'Waiting To Contact', 'Not Coming', 'No Room', 'No Space', 'Not inviting'].map(statusOf)).toEqual([
+      'not_contacted', 'waiting_to_contact', 'not_coming', 'no_room', 'no_space', 'not_inviting',
     ])
   })
 })

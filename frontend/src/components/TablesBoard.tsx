@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { api, errorMessage } from '../api'
+import { isCounted } from '../capacity'
 import {
   type TableLevel,
   type PlanMentor,
@@ -218,7 +219,7 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
   const simulateRef = useRef<HTMLSpanElement>(null)
   const plan = simulation ? { ...savedPlan, ...simulation } : savedPlan
   const [removing, setRemoving] = useState<SeatingTable | null>(null)
-  const { push } = useUndo()
+  const { push, notify } = useUndo()
   const [dragOver, setDragOver] = useState<string | null>(null)
   // While someone is dragged, the not-seated area shows even when empty so they can be dropped there.
   const [dragging, setDragging] = useState(false)
@@ -240,6 +241,8 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
     .filter((s) => s.checked_in && !seated.has(`student:${s.id}`))
     .map((s) => asMember('student', s.id))
 
+  // "No space" sign-ups are only listed; the simulation never draws them.
+  const signups = savedPlan.students.filter(isCounted).length
   const expectedTurnout = Math.round(plan.expected.reduce((sum, e) => sum + e.count, 0))
   const simulated = {
     came: plan.students.filter((s) => s.checked_in).length,
@@ -350,6 +353,8 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
     try {
       const next = await api.generatePlan(sheetId)
       setPlan(next)
+      const count = next.tables.length
+      notify(`${previous.tables.length > 0 ? 'Re-planned' : 'Planned'} ${count} ${count === 1 ? 'table' : 'tables'}`)
       // Redo brings back this plan, not a fresh random one.
       push({ label: 'the re-plan', undo: restore(previous), redo: restore(next) })
       setError(null)
@@ -453,8 +458,10 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
             className="primary with-icon"
             onClick={() => (plan.tables.length > 0 ? setConfirmingReplan(true) : generate())}
             disabled={generating || checkInStarted || !!simulation}
+            aria-busy={generating}
           >
-            <ShuffleIcon /> {generating ? 'Planning…' : plan.tables.length > 0 ? 'Re-plan' : 'Plan tables'}
+            {generating ? <span className="spinner" aria-hidden="true" /> : <ShuffleIcon />}
+            {generating ? 'Planning…' : plan.tables.length > 0 ? 'Re-plan' : 'Plan tables'}
           </button>
         </span>
         <span className="dg-simulate" ref={simulateRef}>
@@ -497,7 +504,7 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
                   type="number"
                   inputMode="numeric"
                   min={0}
-                  max={plan.students.length}
+                  max={signups}
                   step={1}
                   autoFocus
                   placeholder={`Random, about ${expectedTurnout}`}
@@ -512,13 +519,13 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
                 type="range"
                 aria-label="How many come"
                 min={0}
-                max={plan.students.length}
+                max={signups}
                 step={1}
-                value={attendance === '' ? expectedTurnout : Math.min(Number(attendance), plan.students.length)}
+                value={attendance === '' ? expectedTurnout : Math.min(Number(attendance), signups)}
                 onChange={(e) => setAttendance(e.target.value)}
               />
               <p className="muted">
-                Of {plan.students.length} sign-ups. Likelier ones are picked more often. Leave it blank for a random turnout.
+                Of {signups} sign-ups. Likelier ones are picked more often. Leave it blank for a random turnout.
               </p>
             </form>
           )}
@@ -575,7 +582,7 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
         <p className="dg-sim" role="status">
           <strong>Simulation</strong>
           <span>
-            {simulated.came} of {plan.students.length} sign-ups got in
+            {simulated.came} of {signups} sign-ups got in
             {simulation.turned_away > 0 && ` · ${simulation.turned_away} turned away at capacity`}
             {unseatedStudents.length > 0 && ` · ${unseatedStudents.length} with no table to sit at`}
             {simulated.over > 0 && ` · ${simulated.over} ${simulated.over === 1 ? 'table' : 'tables'} past ${MAX_STUDENTS} students`}
@@ -600,7 +607,8 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
       )}
       <div
         ref={grid.ref}
-        className="dg-grid"
+        className={`dg-grid${generating ? ' is-planning' : ''}`}
+        aria-busy={generating}
         style={{
           gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))`,
           gridTemplateRows: `repeat(${grid.rows}, minmax(0, 1fr))`,

@@ -1040,6 +1040,14 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
   height: 36px;
 }
 
+/* A set width, so nothing beside it moves while it syncs. */
+.resync-button {
+  flex: none;
+  width: 112px;
+  padding: 0;
+  white-space: nowrap;
+}
+
 .capacity-field {
   display: flex;
   align-items: center;
@@ -1526,6 +1534,7 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
 .status-no_response { background: #e5e7eb; color: #4b5563; }
 .status-not_coming,
 .status-no_room,
+.status-no_space,
 .status-not_inviting { background: #fee2e2; color: #991b1b; }
 
 @media (prefers-color-scheme: dark) {
@@ -1536,6 +1545,7 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
   .status-no_response { background: #374151; color: #d1d5db; }
   .status-not_coming,
   .status-no_room,
+  .status-no_space,
   .status-not_inviting { background: #7f1d1d; color: #fecaca; }
 }
 
@@ -1710,6 +1720,27 @@ button.attendance-chip.is-warn[aria-expanded='true'] {
 .dg-plan {
   flex: none;
   display: inline-flex;
+}
+
+/* Wide enough for its longest label, so "Planning…" doesn't move the buttons beside it. */
+.dg-plan > button {
+  width: 136px;
+  padding: 0;
+  white-space: nowrap;
+}
+
+button .spinner {
+  border-color: color-mix(in srgb, currentColor 35%, transparent);
+  border-top-color: currentColor;
+}
+
+.dg-grid {
+  transition: opacity 0.15s;
+}
+
+.dg-grid.is-planning {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .dg-controls > button:not(.primary) {

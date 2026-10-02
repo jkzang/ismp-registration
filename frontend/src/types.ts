@@ -69,6 +69,7 @@ export const CONTACT_STATUSES: { value: ContactStatus; label: string }[] = [
   { value: 'no_response', label: 'No response' },
   { value: 'not_coming', label: 'Not coming' },
   { value: 'no_room', label: 'No room' },
+  { value: 'no_space', label: 'No space' },
   { value: 'not_inviting', label: 'Not inviting' },
 ]
 

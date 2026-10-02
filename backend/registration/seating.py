@@ -29,6 +29,8 @@ from rest_framework.exceptions import ValidationError
 from . import models
 from .models import FEMALE, GRAD, MALE, OTHER, UNDERGRAD
 
+NO_SPACE = models.ContactStatus.NO_SPACE
+
 COED = 'coed'  # a table's gender only: it takes both
 GENDER_ORDER, LEVEL_ORDER = [FEMALE, MALE, COED, ''], [UNDERGRAD, GRAD, '']
 STUDENT_LEVELS = (UNDERGRAD, GRAD)
@@ -83,6 +85,11 @@ def student_of(signup):
         'waitlisted_at': signup.waitlisted_at,
         'chance': 1.0 if checked_in else 0.0 if not_a_student else SHOW_UP_RATES.get(signup.status, 0.0),
     }
+
+
+def _counted(students):
+    """Sign-ups that count toward the numbers: "No space" ones are only listed, unless they check in."""
+    return [s for s in students if s['checked_in'] or s['status'] != NO_SPACE]
 
 
 def attendees(sheet):
@@ -518,6 +525,7 @@ def _who_comes(students, attendance, rng):
     """Who turns up. With no `attendance`, each sign-up comes with the chance their contact status
     gives them. With one, exactly that many come (or everyone, if it's more than signed up):
     those checked in, then the rest drawn one by one, likelier ones more often."""
+    students = _counted(students)
     if attendance is None:
         return [s for s in students if s['checked_in'] or rng.random() < s['chance']]
     arrivals = [s for s in students if s['checked_in']]
@@ -618,7 +626,7 @@ def pretend_days(students, capacity=None, rng=None):
     turnout within `TURNOUT_MARGIN` of the expected one, `DAYS_PER_TURNOUT` of each."""
     rng = rng or random.Random()
     likely = round(sum(s['chance'] for s in students))
-    turnouts = range(max(0, likely - TURNOUT_MARGIN), min(len(students), likely + TURNOUT_MARGIN) + 1)
+    turnouts = range(max(0, likely - TURNOUT_MARGIN), min(len(_counted(students)), likely + TURNOUT_MARGIN) + 1)
     return [_who_gets_in(students, capacity, n, rng)[0] for n in turnouts for _ in range(DAYS_PER_TURNOUT)]
 
 

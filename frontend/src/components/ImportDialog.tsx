@@ -7,7 +7,7 @@ import { nextHour, toLocalInput } from '../localTime'
 import { importWarnings } from '../sheetParser'
 import { describeFills, parseWithDatabase } from '../studentDatabase'
 import { useUndo } from '../undo'
-import type { Mentor, Sheet } from '../types'
+import type { Mentor, SeatingPlan, Sheet } from '../types'
 import { CheckIcon, CloseIcon, SheetIcon } from './icons'
 import { Segmented } from './Segmented'
 
@@ -25,7 +25,8 @@ export type ImportStart = { file: PickedFile } | { error: string }
 export function ImportDialog({ start, onClose, onImported }: {
   start: ImportStart
   onClose: () => void
-  onImported: (sheet: Sheet) => void
+  /** With the plan already loaded, so the sheet's page can open without a loading screen. */
+  onImported: (sheet: Sheet, plan: SeatingPlan | null) => void
 }) {
   const { config } = useApp()
   const { notify } = useUndo()
@@ -137,6 +138,8 @@ export function ImportDialog({ start, onClose, onImported }: {
       warnings: importWarnings(parsed),
       ...event,
     })
+    // Loaded while the dialog is still up; the page loads it itself if this fails.
+    const plan = await api.getPlan(sheet.id).catch(() => null)
     const imported = `Imported ${people} and planned the tables`
     notify(
       !fills.length
@@ -145,7 +148,7 @@ export function ImportDialog({ start, onClose, onImported }: {
           ? `${imported}, but the ${fills.length} values from the Student Database weren’t written to the sheet: ${writeError}`
           : `${imported} · filled ${fills.length} blank cells in the sheet from the Student Database (${describeFills(fills)})`,
     )
-    onImported(sheet)
+    onImported(sheet, plan)
   }
 
   // A spreadsheet with a single tab skips the choice of tab.
