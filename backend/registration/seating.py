@@ -17,8 +17,10 @@ organizer can also set a table to coed by hand.
 
 Nobody knows for sure who will come, so students aren't seated ahead of time. Tables are planned
 from expected turnout (each sign-up weighted by how often people with that contact status show
-up) and each gets a group and mentors. Check-in then seats each student at a table of their group.
+up), plus the walk-ins nobody expected (see `WALK_IN_RATE`), and each gets a group and mentors.
+Check-in then seats each student at a table of their group.
 """
+import logging
 import math
 import random
 import uuid
@@ -28,6 +30,9 @@ from rest_framework.exceptions import ValidationError
 
 from . import models
 from .models import FEMALE, GRAD, MALE, OTHER, UNDERGRAD
+
+# Re-plan tells how it picks the tables here, at INFO (see `best_tables` and SEATING_LOG_LEVEL in settings).
+logger = logging.getLogger(__name__)
 
 NO_SPACE = models.ContactStatus.NO_SPACE
 
@@ -48,6 +53,9 @@ SHOW_UP_RATES = {
     'awaiting_response': 0.4,
     'no_response': 0.2,
 }
+# People who come without being expected, as a share of the expected turnout (from the organizers'
+# attendance data). The tables are planned and scored with them (see `generate` and `pretend_days`).
+WALK_IN_RATE = 0.15
 
 # Points for each way a seat goes wrong on a pretend day (see `score_room`): higher is worse. They
 # follow the order check-in falls back in (see `pick_table`), so a later fallback costs more.
@@ -120,11 +128,12 @@ def expected_by_group(students):
 
 
 def _tables_wanted(expected):
-    """6 per table at most. A group expecting under one person gets none;
-    if someone does come, check-in seats them with their gender's other level."""
+    """6 per table at most, with room for the group's share of the walk-ins. A group expecting
+    under one person gets none; if someone does come, check-in seats them with their gender's
+    other level."""
     if expected < 1:
         return 0
-    return math.ceil(expected / MAX_STUDENTS_PER_TABLE)
+    return math.ceil(expected * (1 + WALK_IN_RATE) / MAX_STUDENTS_PER_TABLE)
 
 
 def table_groups(expected, mentors):
@@ -538,14 +547,40 @@ def _who_comes(students, attendance, rng):
     return arrivals
 
 
-def _who_gets_in(students, capacity, attendance, rng):
+def _walk_ins(students, count, rng):
+    """Stand-ins for `count` people who come without being expected. Their gender and level
+    follow the expected turnout's mix, and their ids are negative, so they're never a sign-up's."""
+    expected = {group: n for group, n in expected_by_group(students).items() if n > 0}
+    if not count or not expected:
+        return []
+    groups = rng.choices(list(expected), list(expected.values()), k=count)
+    return [
+        {
+            'id': -number, 'key': '', 'name': f'Walk-in {number}', 'nickname': '', 'gender': gender, 'level': level,
+            'status': models.ContactStatus.NOT_CONTACTED, 'checked_in': False, 'waitlisted_at': None, 'chance': 1.0,
+        }
+        for number, (gender, level) in enumerate(groups, start=1)
+    ]
+
+
+def _likely(students):
+    """The expected turnout, to the nearest person."""
+    return round(sum(s['chance'] for s in students))
+
+
+def _walk_ins_expected(students):
+    return round(WALK_IN_RATE * _likely(students))
+
+
+def _who_gets_in(students, capacity, attendance, rng, walk_ins=0):
     """One pretend day at the door: those let in, in the order they came, and how many were turned away.
 
     Each sign-up comes with the chance their contact status gives them (or `attendance` of them
-    come, see `_who_comes`), in a random order. Someone with no gender on the sheet gets one at
-    random, standing in for the door's question. Once the capacity is reached, later arrivals
-    are turned away; people really checked in are already inside."""
-    arrivals = _who_comes(students, attendance, rng)
+    come, see `_who_comes`), and `walk_ins` more people come unexpected (see `_walk_ins`), all in
+    a random order. Someone with no gender on the sheet gets one at random, standing in for the
+    door's question. Once the capacity is reached, later arrivals are turned away; people really
+    checked in are already inside."""
+    arrivals = _who_comes(students, attendance, rng) + _walk_ins(students, walk_ins, rng)
     rng.shuffle(arrivals)
     arrivals.sort(key=lambda s: not s['checked_in'])
     came, turned_away = [], 0
@@ -575,11 +610,12 @@ def _seat(tables, came, students):
 def simulate(students, mentors, tables, capacity=None, attendance=None, rng=None):
     """A dry run of the day on the planned tables, to try out the seating rules. Nothing is saved.
 
-    Runs one pretend day (see `_who_gets_in`) and seats those let in by the check-in rule, then
-    rearranges the tables into coed ones where that helps (see `rebalance`). Returns the tables
-    as they'd end up, the students, with those let in marked checked in, how many were turned
-    away, and what the rearrangement did."""
-    came, turned_away = _who_gets_in(students, capacity, attendance, rng or random.Random())
+    Runs one pretend day (see `_who_gets_in`), with the walk-ins the expected turnout brings (see
+    `WALK_IN_RATE`) on top of the sign-ups who come, and seats those let in by the check-in rule,
+    then rearranges the tables into coed ones where that helps (see `rebalance`). Returns the
+    tables as they'd end up, the students, with those let in marked checked in, the walk-ins let
+    in, how many were turned away, and what the rearrangement did."""
+    came, turned_away = _who_gets_in(students, capacity, attendance, rng or random.Random(), _walk_ins_expected(students))
     tables = _seat(tables, came, students)
     rearranged = rebalance(tables, came, mentors, fixed={s['id'] for s in students if s['checked_in']})
     came_by_id = {s['id']: s for s in came}
@@ -587,6 +623,7 @@ def simulate(students, mentors, tables, capacity=None, attendance=None, rng=None
         'tables': tables,
         'rearranged': rearranged,
         'students': [came_by_id.get(s['id'], s) for s in students],
+        'walk_ins': [s for s in came if s['id'] < 0],
         'turned_away': turned_away,
     }
 
@@ -623,11 +660,12 @@ def score_room(tables, came):
 
 def pretend_days(students, capacity=None, rng=None):
     """Who gets in on each of the pretend days a plan is scored over (see `_who_gets_in`): every
-    turnout within `TURNOUT_MARGIN` of the expected one, `DAYS_PER_TURNOUT` of each."""
+    turnout within `TURNOUT_MARGIN` of the expected one, `DAYS_PER_TURNOUT` of each, and on every
+    day the walk-ins that expected turnout brings (see `WALK_IN_RATE`)."""
     rng = rng or random.Random()
-    likely = round(sum(s['chance'] for s in students))
+    likely, walk_ins = _likely(students), _walk_ins_expected(students)
     turnouts = range(max(0, likely - TURNOUT_MARGIN), min(len(_counted(students)), likely + TURNOUT_MARGIN) + 1)
-    return [_who_gets_in(students, capacity, n, rng)[0] for n in turnouts for _ in range(DAYS_PER_TURNOUT)]
+    return [_who_gets_in(students, capacity, n, rng, walk_ins)[0] for n in turnouts for _ in range(DAYS_PER_TURNOUT)]
 
 
 def _day_scores(tables, students, days):
@@ -657,6 +695,18 @@ def evaluate(tables, students, days):
     }
 
 
+def _group_name(gender, level):
+    return f'{gender or "any gender"} {level or "either level"}'
+
+
+def _outline(tables):
+    """The tables in one line, for the log: each group's tables, by how many mentors lead each."""
+    leaders = defaultdict(list)
+    for table in tables:
+        leaders[(table['gender'], table['level'])].append(str(_count(table, 'mentor')))
+    return f'{len(tables)} tables: ' + ', '.join(f'{_group_name(*group)} {"+".join(n)}' for group, n in leaders.items())
+
+
 def best_tables(students, mentors, existing_tables, days, rng=None):
     """The tables for Re-plan: of the arrangements the pretend days call for, the one that holds
     up best over all of them (see `evaluate`).
@@ -672,12 +722,30 @@ def best_tables(students, mentors, existing_tables, days, rng=None):
     The winner is then tried with a table closed, and with two of a gender's tables, one of each
     level, merged into one for both, for as long as either scores better. Their mentors go to
     the tables with room. Tables with someone locked or already seated, or with no mentor yet,
-    are left as they are."""
+    are left as they are, and so is any table whose closing would leave more students without one.
+
+    Each step is logged: the arrangements found and where each came from, their scores, and
+    what closing or merging tables did."""
     draft = generate(students, mentors, existing_tables, rng)
     kept = {m['id'] for t in draft for m in t['members'] if m['kind'] == 'student'}
     fixed = {s['id'] for s in students if s['checked_in']}
     genders = {m['id']: m['gender'] for m in mentors}
     expected = expected_by_group(students)
+    # The log's lines are only put together when someone is reading them.
+    logging_on = logger.isEnabledFor(logging.INFO)
+    if logging_on:
+        by_group = ', '.join(f'{_group_name(*group)} {n:.1f}' for group, n in sorted(expected.items()) if n)
+        by_gender = Counter(m['gender'] or 'no gender' for m in mentors)
+        logger.info(
+            'Table plan: %d sign-ups, %.1f expected (%s); %d mentors (%s)',
+            len(_counted(students)), sum(expected.values()), by_group or 'nobody',
+            len(mentors), ', '.join(f'{n} {gender}' for gender, n in sorted(by_gender.items())) or 'none',
+        )
+        logger.info(
+            '  scored over %d pretend days of %d to %d students; lower is better. Weights: %s',
+            len(days), min(map(len, days), default=0), max(map(len, days), default=0),
+            ', '.join(f'{cause} {weight}' for cause, weight in PENALTIES.items()),
+        )
 
     def one_mentor_each(tables):
         """Takes each table's second mentor away, unless they're locked there or have no gender to seat them by."""
@@ -710,43 +778,91 @@ def best_tables(students, mentors, existing_tables, days, rng=None):
     if shape(one_mentor_each(draft)) != shape(draft):
         starts.append(one_mentor_each(draft))
     found = {shape(draft): draft}
-    for came in days[::max(1, len(days) // DAYS_REARRANGED)]:
+    # Where each arrangement was first found, for the log.
+    source = {shape(draft): 'the first plan'}
+    step = max(1, len(days) // DAYS_REARRANGED)
+    for number, came in list(enumerate(days, start=1))[::step]:
         for start in starts:
             tables = _seat(start, came, students)
-            rebalance(tables, came, mentors, fixed)
+            did = rebalance(tables, came, mentors, fixed)
             tables = arrangement(tables)
-            found.setdefault(shape(tables), tables)
+            if shape(tables) not in found:
+                found[shape(tables)] = tables
+                changes = ', '.join(f'{what.replace("_", " ")} {n}' for what, n in did.items() if n and what != 'students_moved')
+                source[shape(tables)] = (
+                    f'day {number}, {len(came)} came, from {"the first plan" if start is draft else "one mentor a table"}'
+                    f': {changes or "mentors seated differently"}'
+                )
 
-    scored = {}
+    scored, causes = {}, {}
 
     def points(tables):
         if shape(tables) not in scored:
-            totals = [sum(day.values()) for day in _day_scores(tables, students, days)]
+            day_scores = _day_scores(tables, students, days)
+            totals = [sum(day.values()) for day in day_scores]
             scored[shape(tables)] = sum(totals), sum(_worst(totals)), len(tables)
+            causes[shape(tables)] = {cause: sum(day[cause] for day in day_scores) for cause in PENALTIES}
         return scored[shape(tables)]
 
+    def score_line(tables):
+        """The score as the log shows it: points a day, on the worst tenth of the days, and from each cause."""
+        total, worst, _ = points(tables)
+        a_day = {cause: n / len(days) for cause, n in causes[shape(tables)].items() if n}
+        return '%.2f a day, %.1f on the worst days (%s)' % (
+            total / len(days), worst / max(1, len(days) // 10),
+            ', '.join(f'{cause} {n:.2f}' for cause, n in a_day.items()) or 'nothing went wrong',
+        )
+
     def fewer_tables(tables):
-        """The arrangement with one table closed, or two merged into one for both levels."""
+        """What was done and the arrangement it gives: one table closed, or two merged into one for both levels."""
         # A table without a mentor stays: it's there for the organizer to find one for.
         free = [
             t for t in tables
             if t['members'] and not any(m['kind'] == 'student' or m.get('locked') for m in t['members'])
         ]
         # Tables alike in group and mentors are interchangeable: closing one of each kind is enough.
-        for table in {(t['gender'], t['level'], _count(t, 'mentor')): t for t in free}.values():
-            yield arrangement([t for t in tables if t is not table])
+        for (gender, level, leading), table in {(t['gender'], t['level'], _count(t, 'mentor')): t for t in free}.items():
+            what = f'close a {leading}-mentor {_group_name(gender, level)} table'
+            yield what, arrangement([t for t in tables if t is not table])
         for gender in (FEMALE, MALE):
             pair = [next((t for t in free if (t['gender'], t['level']) == (gender, level)), None) for level in STUDENT_LEVELS]
             if all(pair):
                 both = {**pair[0], 'level': '', 'members': (pair[0]['members'] + pair[1]['members'])[:MENTORS_PER_TABLE]}
-                yield arrangement([both if t is pair[0] else t for t in tables if t is not pair[1]])
+                what = f'merge a {gender} undergrad table and a {gender} grad table'
+                yield what, arrangement([both if t is pair[0] else t for t in tables if t is not pair[1]])
 
     best = min(found.values(), key=points)
+    if logging_on and days:
+        logger.info(
+            '  rearranged the mentors for %d of those days, from %d starting points: %d arrangements'
+            ' (the numbers are the mentors at each table)', len(days[::step]), len(starts), len(found),
+        )
+        for place, tables in enumerate(sorted(found.values(), key=points), start=1):
+            logger.info('  #%d  %s', place, score_line(tables))
+            logger.info('      %s', _outline(tables))
+            logger.info('      found: %s', source[shape(tables)])
+        logger.info('  #1 scores lowest. Ties go to the better worst days, then the fewest tables, then the one found first.')
+    def unseated(tables):
+        points(tables)
+        return causes[shape(tables)]['no_table']
+
     while True:
-        smaller = min(fewer_tables(best), key=points, default=best)
+        # Never at the cost of a seat: a very full table would otherwise score worse than no table at all.
+        options = [option for option in fewer_tables(best) if unseated(option[1]) <= unseated(best)]
+        _, smaller = min(options, key=lambda option: points(option[1]), default=('', best))
+        if logging_on and days and options:
+            logger.info('  with a table fewer than %s:', _outline(best))
+            for what, tables in options:
+                better = points(tables) < points(best)
+                verdict = 'no better' if not better else 'better, kept' if tables is smaller else 'better, but not the lowest'
+                logger.info('    %s: %s -> %s', what, score_line(tables), verdict)
         if points(smaller) >= points(best):
-            return best
+            break
         best = smaller
+    if logging_on and days:
+        logger.info('  chosen: %s', score_line(best))
+        logger.info('      %s', _outline(best))
+    return best
 
 
 def table_of(tables, kind, person_id):

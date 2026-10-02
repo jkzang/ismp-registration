@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 from pathlib import Path
 
 import dj_database_url
@@ -181,7 +182,14 @@ LOGGING = {
     'handlers': {'console': {'class': 'logging.StreamHandler'}},
     # Render keeps whatever goes to stdout/stderr; this makes sure server errors land there.
     # DJANGO_LOG_LEVEL=WARNING adds 4xx responses.
-    'loggers': {'django': {'handlers': ['console'], 'level': os.environ.get('DJANGO_LOG_LEVEL', 'ERROR')}},
+    'loggers': {
+        'django': {'handlers': ['console'], 'level': os.environ.get('DJANGO_LOG_LEVEL', 'ERROR')},
+        # How Re-plan picks the tables, step by step: on for local development, but not while the tests run.
+        'registration.seating': {
+            'handlers': ['console'],
+            'level': os.environ.get('SEATING_LOG_LEVEL', 'INFO' if DEBUG and sys.argv[1:2] != ['test'] else 'WARNING'),
+        },
+    },
 }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

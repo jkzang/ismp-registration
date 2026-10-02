@@ -217,7 +217,8 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
   const [attendance, setAttendance] = useState('')
   const [settingAttendance, setSettingAttendance] = useState(false)
   const simulateRef = useRef<HTMLSpanElement>(null)
-  const plan = simulation ? { ...savedPlan, ...simulation } : savedPlan
+  // The walk-ins sit at the tables too, so the board needs them among the students.
+  const plan = simulation ? { ...savedPlan, ...simulation, students: [...simulation.students, ...simulation.walk_ins] } : savedPlan
   const [removing, setRemoving] = useState<SeatingTable | null>(null)
   const { push, notify } = useUndo()
   const [dragOver, setDragOver] = useState<string | null>(null)
@@ -245,9 +246,10 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
   const signups = savedPlan.students.filter(isCounted).length
   const expectedTurnout = Math.round(plan.expected.reduce((sum, e) => sum + e.count, 0))
   const simulated = {
-    came: plan.students.filter((s) => s.checked_in).length,
+    came: (simulation?.students ?? []).filter((s) => s.checked_in).length,
+    walkIns: simulation?.walk_ins.length ?? 0,
     over: plan.tables.filter((t) => t.members.filter((m) => m.kind === 'student').length > MAX_STUDENTS).length,
-    guessed: plan.students.filter((s, i) => s.gender !== savedPlan.students[i]?.gender).length,
+    guessed: (simulation?.students ?? []).filter((s, i) => s.gender !== savedPlan.students[i]?.gender).length,
   }
 
   const moves = simulation?.rearranged
@@ -470,7 +472,7 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
             className="with-icon"
             onClick={simulate}
             disabled={simulating || checkInStarted || plan.tables.length === 0}
-            title={checkInStarted ? 'Check-in has started, so the simulation is off.' : `Pretend it's the day: ${attendance === '' ? 'a random turnout checks' : `${attendance} sign-ups check`} in, up to capacity, and ${attendance === '' ? 'is' : 'are'} seated by the check-in rules. Nothing is saved.`}
+            title={checkInStarted ? 'Check-in has started, so the simulation is off.' : `Pretend it's the day: ${attendance === '' ? 'a random turnout checks' : `${attendance} sign-ups check`} in, with the usual walk-ins on top, up to capacity, and all are seated by the check-in rules. Nothing is saved.`}
           >
             <PlayIcon /> {simulating ? 'Simulating…' : simulation ? 'Simulate again' : 'Simulate'}
             {attendance !== '' && <span className="dg-simulate-count">{attendance}</span>}
@@ -525,7 +527,8 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
                 onChange={(e) => setAttendance(e.target.value)}
               />
               <p className="muted">
-                Of {signups} sign-ups. Likelier ones are picked more often. Leave it blank for a random turnout.
+                Of {signups} sign-ups. Likelier ones are picked more often. Leave it blank for a random turnout. Walk-ins
+                come on top.
               </p>
             </form>
           )}
@@ -583,6 +586,7 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
           <strong>Simulation</strong>
           <span>
             {simulated.came} of {signups} sign-ups got in
+            {simulated.walkIns > 0 && ` · ${simulated.walkIns} ${simulated.walkIns === 1 ? 'walk-in' : 'walk-ins'} on top`}
             {simulation.turned_away > 0 && ` · ${simulation.turned_away} turned away at capacity`}
             {unseatedStudents.length > 0 && ` · ${unseatedStudents.length} with no table to sit at`}
             {simulated.over > 0 && ` · ${simulated.over} ${simulated.over === 1 ? 'table' : 'tables'} past ${MAX_STUDENTS} students`}

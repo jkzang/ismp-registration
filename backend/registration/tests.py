@@ -356,6 +356,15 @@ class TablePlanningTests(SeatingBase):
         self.assertEqual(self.seated_students(data), [[], []])
         self.assertTrue(all(sum(m['kind'] == 'mentor' for m in t['members']) == 2 for t in data['tables']))
 
+    def test_tables_leave_room_for_walk_ins(self):
+        self.add_students(14, 'female', 'undergrad')  # 11.9 expected: two tables, but 13.7 with walk-ins
+        for name in ('Mia', 'Ava', 'Zoe'):
+            self.add_mentor(name, 'female')
+        students, mentors = seating.attendees(self.sheet)
+        self.assertEqual(self.groups({'tables': seating.generate(students, mentors, [])}), [('female', 'undergrad')] * 3)
+        with mock.patch.object(seating, 'WALK_IN_RATE', 0):
+            self.assertEqual(len(seating.generate(students, mentors, [])), 2)
+
     def test_contact_status_sets_how_much_each_sign_up_counts(self):
         self.add_students(10, 'female', 'grad', status='confirmed')
         self.add_students(10, 'male', 'grad', status='awaiting_response')
@@ -409,7 +418,7 @@ class TablePlanningTests(SeatingBase):
         self.assertEqual(self.groups(self.generate()), [('male', 'grad')] * 2)
 
     def test_no_table_gets_more_than_two_mentors(self):
-        self.add_students(7, 'female', 'undergrad')  # 5.95 expected: one table
+        self.add_students(6, 'female', 'undergrad')  # 5.1 expected, 5.9 with walk-ins: one table
         mentors = [self.add_mentor(name, 'female') for name in ('Mia', 'Ava', 'Zoe')]
         data = self.generate()
         self.assertEqual(len(data['tables']), 1)
@@ -457,6 +466,11 @@ class TablePlanningTests(SeatingBase):
         came = {s['id']: s for s in data['students'] if s['checked_in']}
         self.assertTrue(1 < len(came) <= 13)
         self.assertTrue(all(s['status'] == 'confirmed' and s['gender'] for s in came.values()))
+        # 15% of the 11 expected come unexpected, on top of the sign-ups: stand-ins with ids no sign-up has.
+        walk_ins = data['walk_ins']
+        self.assertEqual([(s['id'], s['name'], s['checked_in']) for s in walk_ins], [(-1, 'Walk-in 1', True), (-2, 'Walk-in 2', True)])
+        self.assertEqual(len(data['students']), 18)
+        came.update({s['id']: s for s in walk_ins})
         if unknown.id in came:
             self.assertIn(came[unknown.id]['gender'], ('female', 'male'))
         seated = [i for ids in self.seated_students(data) for i in ids]
@@ -479,7 +493,8 @@ class TablePlanningTests(SeatingBase):
         self.sheet.save()
         with mock.patch('registration.seating.random.Random', return_value=random.Random(1)):
             data = self.client.post(f'/api/sheets/{self.sheet.id}/plan/simulate/').data
-        came = [s['id'] for s in data['students'] if s['checked_in']]
+        # Walk-ins take up spots like anyone else.
+        came = [s['id'] for s in data['students'] + data['walk_ins'] if s['checked_in']]
         self.assertEqual(len(came), 3)
         self.assertGreater(data['turned_away'], 0)
         self.assertEqual(sorted(i for ids in self.seated_students(data) for i in ids), sorted(came))
@@ -596,8 +611,8 @@ class ScoringTests(SeatingBase):
         self.add_mentor('Mia', 'female')
         self.generate()
         data = self.score_plan()
-        # 5 either side of 10, but no more than signed up.
-        self.assertEqual((data['turnout'], data['days']), ([5, 12], 8 * seating.DAYS_PER_TURNOUT))
+        # 5 either side of 10, but no more than signed up, and 2 walk-ins every day.
+        self.assertEqual((data['turnout'], data['days']), ([7, 14], 8 * seating.DAYS_PER_TURNOUT))
         # One mentor for everyone: every day has students past 3 per mentor.
         self.assertGreater(data['causes']['past_ideal'], 0)
         self.assertGreaterEqual(data['worst'], data['average'])
@@ -606,6 +621,25 @@ class ScoringTests(SeatingBase):
         self.assertEqual(self.score_plan(), data)
         self.assertEqual(self.seated_students(self.plan()), [[]])
         self.assertEqual(models.Signup.objects.filter(checked_in_at__isnull=False).count(), 0)
+
+    def test_every_pretend_day_has_walk_ins_in_the_expected_mix(self):
+        self.add_students(20, 'female', 'undergrad')  # 17 expected
+        self.add_students(4, 'male', 'grad')  # 3.4 expected
+        students, _ = seating.attendees(self.sheet)
+        days = seating.pretend_days(students, None, random.Random(1))
+        signed_up = {s['id'] for s in students}
+        walk_ins = [[s for s in came if s['id'] not in signed_up] for came in days]
+        # 15% of the 20 expected, whatever the day's turnout.
+        self.assertEqual({len(day) for day in walk_ins}, {3})
+        self.assertTrue(all(s['id'] < 0 for day in walk_ins for s in day))
+        groups = Counter((s['gender'], s['level']) for day in walk_ins for s in day)
+        self.assertEqual(set(groups), {('female', 'undergrad'), ('male', 'grad')})
+        self.assertGreater(groups[('female', 'undergrad')], groups[('male', 'grad')])
+
+    def test_walk_ins_are_turned_away_at_capacity_like_anyone_else(self):
+        self.add_students(20, 'female', 'undergrad')
+        students, _ = seating.attendees(self.sheet)
+        self.assertTrue(all(len(came) <= 10 for came in seating.pretend_days(students, 10, random.Random(1))))
 
     def test_more_mentors_score_better(self):
         self.add_students(12, 'female', 'undergrad')
@@ -623,7 +657,8 @@ class ScoringTests(SeatingBase):
         return [(t['gender'], sorted(names[m['id']] for m in t['members'] if m['kind'] == 'mentor')) for t in data['tables']]
 
     def test_re_plan_opens_a_table_for_spare_mentors_when_the_days_call_for_it(self):
-        self.add_students(14, 'female', 'undergrad')  # 11.9 expected: two tables, too few when 13 or 14 come
+        # 10.2 expected, 11.7 with walk-ins: two tables, too few when 13 or 14 come
+        self.add_students(12, 'female', 'undergrad')
         for name in ('Mia', 'Ava', 'Zoe', 'Ivy', 'Amy', 'Eve'):
             self.add_mentor(name, 'female')
         students, mentors = seating.attendees(self.sheet)
@@ -658,6 +693,19 @@ class ScoringTests(SeatingBase):
         data = self.generate()
         self.assertEqual(self.groups(data), [('female', '')])
         self.assertEqual(self.mentors_by_table(data), [('female', ['Ava', 'Mia'])])
+
+    def test_re_plan_logs_how_it_picked_the_tables_without_naming_anyone(self):
+        self.add_students(3, 'female', 'undergrad')
+        self.add_students(2, 'female', 'grad')
+        for name in ('Mia', 'Ava'):
+            self.add_mentor(name, 'female')
+        with self.assertLogs('registration.seating', 'INFO') as logs:
+            self.generate()
+        log = '\n'.join(logs.output)
+        self.assertIn('found: the first plan', log)
+        self.assertRegex(log, r'merge a female undergrad table and a female grad table: .* -> better, kept')
+        self.assertRegex(log, r'chosen: .*\n.*1 tables: female either level 2')
+        self.assertNotRegex(log, 'Mia|Ava')
 
     def test_re_plan_keeps_locked_people_and_the_plan_as_drawn_when_nothing_scores_better(self):
         students = self.add_students(6, 'female', 'grad')
@@ -696,12 +744,15 @@ class CoedTableTests(SeatingBase):
         self.add_students(8, 'male', 'undergrad')
         for name, gender in (('Ann Lee', 'female'), ('Mia Stone', 'female'), ('Tom Lee', 'male'), ('Sam Park', 'male')):
             self.add_mentor(name, gender)
-        return self.generate()
+        # Planned without walk-ins: with them Re-plan makes the coed table itself, and the simulation has nothing to ease.
+        with mock.patch.object(seating, 'WALK_IN_RATE', 0):
+            return self.generate()
 
     def test_simulation_brings_a_couple_together_at_a_coed_table(self):
         plan = self.crowded_guys_and_a_couple()
         self.assertEqual(self.groups(plan), [('female', 'undergrad')] + [('male', 'undergrad')] * 2)
-        data = {**self.simulate(12), 'mentors': plan['mentors']}
+        with mock.patch.object(seating, 'WALK_IN_RATE', 0):
+            data = {**self.simulate(12), 'mentors': plan['mentors']}
         # Ann joins Tom: his guys table was past 3 per mentor, and hers has Mia.
         moves = data['rearranged']
         self.assertEqual((moves['coed_tables'], moves['tables_added'], moves['mentors_moved']), (1, 0, 1))

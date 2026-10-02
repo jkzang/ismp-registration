@@ -114,6 +114,8 @@ export type SeatingPlan = {
 
 /** A pretend check-in on the planned tables: who got in and where they'd sit. Never saved. */
 export type Simulation = Pick<SeatingPlan, 'tables' | 'students'> & {
+  /** Stand-ins for the people who come without being expected, let in on top of the sign-ups. Their ids are negative. */
+  walk_ins: PlanStudent[]
   /** Arrived after the sheet's capacity was reached. */
   turned_away: number
   /** The last-minute pass that relieves tables past 3 students per mentor: coed tables (counting
