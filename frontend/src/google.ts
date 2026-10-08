@@ -6,7 +6,8 @@
  * read (and tick attendance in) just the spreadsheets someone picks in the Google Picker.
  */
 import { checkInTabTitle, type CheckInLayout } from './checkInTab'
-import { parseSheet, type FieldMap } from './sheetParser'
+import { parseSheet, type ContactStatus, type FieldMap } from './sheetParser'
+import { locateFieldMap, statusText } from './signupTracker'
 import { isDatabaseTab } from './studentDatabase'
 import type { AppConfig } from './types'
 
@@ -161,6 +162,22 @@ async function sheetsFetch<T>(config: AppConfig, path: string, init: RequestInit
   return res.json()
 }
 
+/**
+ * Runs Google Sheets calls, first getting a token (call from a click, for the popup). If this person
+ * hasn't picked the file yet (someone else imported it), the Picker asks them to once. Null if they
+ * close it.
+ */
+export async function withSheetAccess<T>(config: AppConfig, spreadsheetId: string, run: () => Promise<T>): Promise<T | null> {
+  await getAccessToken(config)
+  try {
+    return await run()
+  } catch (err) {
+    if (!(err instanceof NoAccessError)) throw err
+    const picked = await pickSpreadsheet(config, await getAccessToken(config), spreadsheetId)
+    return picked ? run() : null
+  }
+}
+
 export type Tab = { id: number; title: string; rows: number }
 
 export async function getSpreadsheet(config: AppConfig, spreadsheetId: string): Promise<{ title: string; tabs: Tab[] }> {
@@ -242,9 +259,7 @@ export async function writeAttendance(
 ) {
   const { tabTitle, values } = await readTab(config, sheet.spreadsheet_id, sheet.tab_id)
   // An import from before the column existed saved it as "none"; look for it again.
-  const fieldMap = { ...sheet.field_map }
-  if (!fieldMap.attendance) delete fieldMap.attendance
-  const parsed = parseSheet(values, { fieldMap })
+  const parsed = parseSheet(values, { fieldMap: locateFieldMap(sheet.field_map) })
   const column = parsed.columns.attendance
   if (column === undefined) {
     throw new NoAttendanceColumnError('No attendance column found. Name a column “Attendance” in the sheet.')
@@ -269,6 +284,31 @@ export async function writeAttendance(
     }
   }
   return data.length
+}
+
+export class NoStatusColumnError extends Error {}
+
+/**
+ * Sets one sign-up's Contact Status cell (`key` is their row's key). The tab is read again first, so
+ * the right row is found even if rows were added or sorted since the page last read it.
+ */
+export async function writeStatus(
+  config: AppConfig,
+  sheet: { spreadsheet_id: string; tab_id: number; field_map: FieldMap },
+  key: string,
+  status: ContactStatus,
+) {
+  const { tabTitle, values } = await readTab(config, sheet.spreadsheet_id, sheet.tab_id)
+  const parsed = parseSheet(values, { fieldMap: locateFieldMap(sheet.field_map) })
+  const column = parsed.columns.status
+  if (column === undefined) {
+    throw new NoStatusColumnError('No Contact Status column found. Name a column “Contact Status” in the sheet.')
+  }
+  const i = parsed.rows.findIndex((row) => row.key === key)
+  if (i === -1) throw new Error('That sign-up is no longer in the sheet, or their name or timestamp changed. Refresh and try again.')
+  await writeCells(config, sheet.spreadsheet_id, tabTitle, [
+    { row: parsed.rowIndexes[i], column, text: statusText(values, parsed, status) },
+  ])
 }
 
 type TabProperties = { sheetId: number; title: string; index: number }

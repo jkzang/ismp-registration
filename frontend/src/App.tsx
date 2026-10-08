@@ -11,6 +11,7 @@ import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
 import { MentorsPage } from './pages/MentorsPage'
 import { SheetPage } from './pages/SheetPage'
+import { SignupsPage } from './pages/SignupsPage'
 import { UndoProvider } from './undo'
 import type { AppConfig, CurrentUser, Sheet } from './types'
 
@@ -123,6 +124,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<HomePage onAddSheet={startImport} />} />
               <Route path="/sheets/:sheetId" element={<SheetPage />} />
+              <Route path="/sheets/:sheetId/signups" element={<SignupsPage />} />
               <Route path="/mentors" element={<MentorsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

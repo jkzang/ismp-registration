@@ -4,13 +4,13 @@ import { api, ApiError, errorMessage } from '../api'
 import { useApp } from '../appContext'
 import { CheckInPanel } from '../components/CheckInPanel'
 import { CheckIcon, CloseIcon, PencilIcon, RefreshIcon, WarningIcon } from '../components/icons'
+import { SheetViews } from '../components/SheetViews'
 import { TablesBoard } from '../components/TablesBoard'
 import { useAttendanceSync, type AttendanceStatus } from '../attendanceSync'
 import { useCheckInTabSync, type CheckInTabStatus } from '../checkInTabSync'
-import { getAccessToken, NoAccessError, pickSpreadsheet, readDatabaseTab, readTab, writeCells } from '../google'
+import { readTab, withSheetAccess } from '../google'
 import { toLocalInput } from '../localTime'
-import { importWarnings } from '../sheetParser'
-import { parseWithDatabase } from '../studentDatabase'
+import { describeResync, resyncSheet } from '../resync'
 import { sheetName, signupsKey, type SeatingPlan, type Sheet } from '../types'
 import { useUndo } from '../undo'
 import { RESERVE_MINUTES } from '../capacity'
@@ -313,55 +313,22 @@ export function SheetPage() {
     }
   }, [load, navigate, preloaded])
 
-  /** Runs a Google Sheets call, first getting a token (call from a click, for the popup). Null if
-   *  the person closes the Picker. */
-  async function withSheetAccess<T>(sheet: Sheet, run: () => Promise<T>): Promise<T | null> {
-    await getAccessToken(config)
-    try {
-      return await run()
-    } catch (err) {
-      if (!(err instanceof NoAccessError)) throw err
-      // Someone else imported it: this person has to pick the file once before the app can use it.
-      const picked = await pickSpreadsheet(config, await getAccessToken(config), sheet.spreadsheet_id)
-      return picked ? run() : null
-    }
-  }
-
   async function resync() {
     if (!sheet) return
     setResyncing(true)
     setError(null)
     try {
-      const data = await withSheetAccess(sheet, () => readTab(config, sheet.spreadsheet_id, sheet.tab_id))
+      const data = await withSheetAccess(config, sheet.spreadsheet_id, () => readTab(config, sheet.spreadsheet_id, sheet.tab_id))
       if (!data) return
-      const database = await readDatabaseTab(config, sheet.spreadsheet_id, data.tabs, sheet.tab_id)
-      const { parsed, fills } = parseWithDatabase(data.values, database, { fieldMap: sheet.field_map })
-      // Doesn't hold up the re-sync; the filled values are imported either way.
-      let writeError: string | null = null
-      try {
-        await writeCells(config, sheet.spreadsheet_id, data.tabTitle, fills)
-      } catch (err) {
-        writeError = errorMessage(err, 'Couldn’t write to the sheet.')
-      }
-      const result = await api.resyncSheet(sheet.id, {
-        spreadsheet_title: data.spreadsheetTitle,
-        tab_title: data.tabTitle,
-        field_map: parsed.fieldMap,
-        rows: parsed.rows,
-        warnings: importWarnings(parsed),
-      })
+      const synced = await resyncSheet(config, sheet, data)
+      const { result, writeError } = synced
       setSheet(result.sheet)
       const next = await api.getPlan(sheet.id)
       setPlan(next)
       // Once check-in starts the tables are set, so there's nothing to ask.
       const planned = next.tables.length > 0 && !next.students.some((s) => s.checked_in)
       setSignupsChanged(planned && !!plan && signupsKey(next) !== signupsKey(plan))
-      const changes = [
-        result.added && `${result.added} added`,
-        result.removed && `${result.removed} removed`,
-        fills.length && `${fills.length} filled from Student Database${writeError ? ' (not written to the sheet)' : ''}`,
-      ].filter(Boolean)
-      notify(changes.length ? `Re-synced: ${changes.join(' · ')}` : 'Re-synced: no new or removed sign-ups')
+      notify(describeResync(synced))
       if (writeError) setError(`The values from the Student Database weren’t written to the sheet: ${writeError}`)
       refreshSheets().catch(() => {})
     } catch (err) {
@@ -386,6 +353,7 @@ export function SheetPage() {
       <header className="sheet-head">
         <div className="sheet-heading">
           <SheetTitle sheet={sheet} url={sheetUrl} onSaved={setSheet} />
+          <SheetViews sheetId={sheet.id} />
         </div>
         <div className="sheet-head-actions">
           <WarningsChip warnings={sheet.warnings} />

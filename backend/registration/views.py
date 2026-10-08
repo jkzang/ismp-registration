@@ -350,6 +350,16 @@ class SignupViewSet(ChapterScoped, viewsets.GenericViewSet):
         signup.save(update_fields=['waitlisted_at'])
         return Response({'student': seating.student_of(signup)})
 
+    # Set from the Sign-ups page, which writes the same status into the Google Sheet's column itself.
+    @action(detail=True, methods=['post'], url_path='status')
+    def set_status(self, request, pk=None):
+        payload = serializers.StatusSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        signup = self.get_object()
+        signup.status = payload.validated_data['status']
+        signup.save(update_fields=['status'])
+        return Response({'student': seating.student_of(signup)})
+
     @action(detail=True, methods=['post'], url_path='undo-check-in')
     def undo_check_in(self, request, pk=None):
         signup = self.get_object()

@@ -15,11 +15,22 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   The sheet's page rewrites it whenever check-ins or the tables change (re-plans, seats handed out
   at the door, people moved by hand), so edits made in that tab are overwritten.
 
+- Each sheet also has a **Sign-ups** page (switch between it and Check-in under the sheet's title)
+  for reaching people before the event: everyone in the tab, newest first, filtered by contact
+  status. Changing someone's status writes it straight into the tab's Contact Status column (in
+  the sheet's own spelling, e.g. its dropdown's) and into the app. **Text**, **Call** and **Email**
+  open your phone's or computer's own app with a message you set under **Message** (kept on that
+  device), and move people who hadn't been contacted to *Awaiting response*. It re-reads the sheet
+  every 30 seconds and when you come back to the tab, so edits made in the sheet show up too, and
+  **Add to check-in** brings in sign-ups that aren't on the check-in list yet.
+
 ## Privacy
 
 - The browser reads the sheet and keeps only name, nickname, gender, enrollment level and
   contact status. Phone numbers, emails, chat IDs and all other columns are never sent to the
-  server. See `frontend/src/sheetParser.ts`.
+  server. See `frontend/src/sheetParser.ts`. The Sign-ups page shows phone numbers and emails by
+  reading the sheet in the browser each time; they stay in that tab's memory
+  (`frontend/src/signupTracker.ts`).
 - Google access tokens stay in the browser tab's memory; the server never sees them.
 - The app uses the `drive.file` scope, so it can open only spreadsheets someone picks in the
   picker.

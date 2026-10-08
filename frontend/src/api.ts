@@ -2,6 +2,7 @@ import type {
   AppConfig,
   Chapter,
   CheckInResult,
+  ContactStatus,
   CurrentUser,
   Gender,
   Level,
@@ -102,5 +103,6 @@ export const api = {
     post<CheckInResult>(`/signups/${signupId}/check-in/`, door),
   undoCheckIn: (signupId: number) => post<{ student: PlanStudent }>(`/signups/${signupId}/undo-check-in/`),
   waitlist: (signupId: number) => post<{ student: PlanStudent }>(`/signups/${signupId}/waitlist/`),
+  setStatus: (signupId: number, status: ContactStatus) => post<{ student: PlanStudent }>(`/signups/${signupId}/status/`, { status }),
   undoWaitlist: (signupId: number) => post<{ student: PlanStudent }>(`/signups/${signupId}/undo-waitlist/`),
 }

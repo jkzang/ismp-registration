@@ -97,6 +97,10 @@ class CheckInSerializer(serializers.Serializer):
     level = serializers.ChoiceField(choices=[models.UNDERGRAD, models.GRAD], required=False)
 
 
+class StatusSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=models.ContactStatus.choices)
+
+
 class SimulateSerializer(serializers.Serializer):
     attendance = serializers.IntegerField(min_value=0, max_value=100000, required=False, allow_null=True)
 

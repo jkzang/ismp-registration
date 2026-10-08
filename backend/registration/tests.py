@@ -294,6 +294,20 @@ class ImportTests(ApiTestBase):
         response = self.client.post(f'/api/signups/{amy.id}/undo-waitlist/')
         self.assertIsNone(response.data['student']['waitlisted_at'])
 
+    def test_status_can_be_set_from_the_app(self):
+        sheet = self.import_sheet([row('k1', 'Amy', status='not_contacted')])
+        amy = sheet.signups.get()
+        response = self.client.post(f'/api/signups/{amy.id}/status/', {'status': 'confirmed'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['student']['status'], 'confirmed')
+        amy.refresh_from_db()
+        self.assertEqual(amy.status, 'confirmed')
+        response = self.client.post(f'/api/signups/{amy.id}/status/', {'status': 'maybe'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.client.force_authenticate(make_member('555', self.other_chapter))
+        response = self.client.post(f'/api/signups/{amy.id}/status/', {'status': 'not_coming'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
     def test_chapter_members_share_sheets(self):
         sheet = self.import_sheet([row('k1', 'Amy')])
         self.client.force_authenticate(make_member('444', self.chapter))

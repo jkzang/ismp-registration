@@ -2639,3 +2639,233 @@ button .spinner {
 
 
 
+
+/* Sign-ups and Check-in, under a sheet's title. */
+.sheet-views {
+  margin-top: 6px;
+}
+
+.sheet-views a {
+  padding: 5px 14px;
+  white-space: nowrap;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.sheet-views a:hover {
+  color: var(--text);
+}
+
+.sheet-views a.is-on {
+  background: var(--bg);
+  color: var(--accent);
+  box-shadow: var(--shadow-card);
+}
+
+/* Sign-ups page */
+
+.message-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.message-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.message-editor textarea {
+  resize: vertical;
+}
+
+.message-editor-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.message-editor code {
+  font-size: 12px;
+}
+
+.signups {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.signups-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.signups-top .checkin-search {
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+
+.signups-groups {
+  flex-wrap: wrap;
+}
+
+.signups-groups button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+}
+
+.signups-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--warn-text);
+  background: var(--warn-soft);
+}
+
+.signups-note button {
+  padding: 4px 12px;
+  background: var(--bg);
+}
+
+.signups-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 6px 0 0;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.signups-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  transition: background 0.12s, opacity 0.12s;
+}
+
+.signups-list li + li {
+  margin-top: 1px;
+}
+
+.signups-list li:hover {
+  background: var(--hover-wash);
+}
+
+.signups-list li.is-saving {
+  opacity: 0.7;
+}
+
+.signups-list li.checkin-empty {
+  justify-content: center;
+}
+
+.signups-list li.checkin-empty:hover {
+  background: none;
+}
+
+.signup-person {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.signup-meta,
+.signup-reach {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.signup-reach {
+  user-select: text;
+}
+
+.signup-meta .checkin-flag {
+  align-self: center;
+}
+
+.signup-controls {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.signups-list .status-select {
+  width: 172px;
+  padding: 5px 8px;
+  border-color: transparent;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.signups-list .status-select:disabled {
+  cursor: default;
+  opacity: 0.8;
+}
+
+.signup-actions {
+  display: flex;
+  gap: 2px;
+  /* Three buttons' worth, so statuses line up whether or not someone has a phone or email. */
+  min-width: 100px;
+}
+
+.signup-actions .icon-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--text-muted);
+}
+
+.signup-actions .icon-button:hover {
+  color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .signups-list li {
+    flex-wrap: wrap;
+  }
+
+  .signup-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .signups-top .checkin-search {
+    max-width: none;
+  }
+}
