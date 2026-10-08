@@ -340,7 +340,7 @@ export function SheetPage() {
     pulling.current = true
     try {
       await getAccessToken(config, { interactive: false })
-      const data = await readForSync(current, () => readTab(config, current.spreadsheet_id, current.tab_id))
+      const data = await readForSync(config, current, () => readTab(config, current.spreadsheet_id, current.tab_id))
       if (!data) return
       const synced = await resyncSheet(config, current, data, {
         auto: true,
@@ -374,7 +374,7 @@ export function SheetPage() {
     setResyncing(true)
     setError(null)
     try {
-      const data = await readForSync(sheet, () =>
+      const data = await readForSync(config, sheet, () =>
         withSheetAccess(config, sheet.spreadsheet_id, () => readTab(config, sheet.spreadsheet_id, sheet.tab_id)),
       )
       if (!data) return

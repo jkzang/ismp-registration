@@ -32,12 +32,32 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   numbers the tables are planned from), mentors to students per gender at that turnout, who's
   coming by gender and level, the contact status spread, how people heard about the event, and
   the group chats.
-- **Group chats** are tracked in their own sheet column, apart from contact status: add a checkbox
-  column named **Added to Group Chat**. People who answered yes to a "join our group chats"
-  question (or, without one, gave a WeChat/Instagram/LINE/etc. ID) get an *Add to chats* button
-  that ticks it; the **Add to chats** filter lists the confirmed ones not added yet. A "How did you
-  hear about this event?" question feeds the overview. Like phone numbers, social media IDs and
-  these answers stay in the browser.
+- **The app tends every imported sign-up tab** whenever it reads it (at import, every 30 seconds on
+  a sheet's pages, and for every sheet when the app opens with Google already connected). It only
+  fills blank cells, so anything typed in the sheet stays:
+  - Adds **Contact Status**, **New or Returning**, **Group Chat Status** and **Contacted At**
+    columns after the last column when they're missing, as dropdowns colored like the app.
+  - Fills blank Contact Status with *Not Contacted*.
+  - Fills New or Returning by looking each person up in the spreadsheet's **Student Database** tab
+    (by phone, then email, then name): found is *Returning*, otherwise *New*. Without that tab it's
+    left blank.
+  - Fills Group Chat Status with *Doesn't Want To Join* for people who answered no to a "join our
+    group chats" question, otherwise *Not Invited* (or *Added To WeChat/Line* where an older
+    "Added to Group Chat" checkbox was ticked). The statuses, by stage: To Do (*Not Invited*),
+    Pending (*WeChat Friend Request Sent*, *Line QR Shared*, *WeChat Group Invite Sent*), Complete
+    (*Added To WeChat*, *Added To Line*), N/A (*Doesn't Want To Join*).
+  - Moving someone to *Awaiting response* from the Sign-ups page stamps Contacted At (someone set to
+    it in the sheet is stamped the next time it's read); 48 hours later they're moved to
+    *No Response*.
+  - Keeps a **Sign-up statistics** block in six rows above the header (sign-ups by gender and level,
+    new vs returning, contact statuses, group chat stages), frozen with the header and rewritten when
+    the numbers change.
+
+  None of these columns are sent to the server. The Sign-ups page sets Group Chat Status from a
+  dropdown on each row, and the **Add to chats** filter lists the confirmed people who asked to join
+  and are still To Do or Pending. The overview charts new vs returning and the group chat stages.
+  A "How did you hear about this event?" question feeds the overview. Like phone numbers, social
+  media IDs and these answers stay in the browser.
 - Several volunteers can use a sheet at once. Each device asks the server for a sync ticket before
   reading the tab, and the server turns away a re-sync from a read older than the last one it
   took, so a slow device can't undo newer changes. Undo and redo on the Sign-ups page only change

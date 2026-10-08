@@ -29,8 +29,9 @@ describe('statusText', () => {
   it('uses the sheet’s own spelling when it has one', () => {
     expect(statusText(values, parsed, 'awaiting_response')).toBe('Awaiting Response')
   })
-  it('falls back to the app’s label', () => {
+  it('falls back to the app’s label, as its dropdown spells it', () => {
     expect(statusText(values, parsed, 'confirmed')).toBe('Confirmed')
+    expect(statusText(values, parsed, 'no_response')).toBe('No Response')
   })
 })
 

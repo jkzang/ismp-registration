@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import type { Overview } from '../signupOverview'
+import { RETURNING_LABELS } from '../signupColumns'
 import { CheckIcon, CloseIcon, WarningIcon } from './icons'
 
 const GENDERS = { female: 'Girls', male: 'Guys', '': 'No gender' } as const
@@ -35,6 +36,45 @@ function BarList({ rows, total }: { rows: { key: string; label: ReactNode; count
   )
 }
 
+/** New and returning as one bar split in two, with a legend that carries the numbers. */
+function ReturningChart({ rows, total }: { rows: Overview['returning']; total: number }) {
+  const known = rows.filter((r) => r.value !== '')
+  const sum = known.reduce((n, r) => n + r.count, 0)
+  const blank = rows.find((r) => r.value === '')?.count ?? 0
+  return (
+    <>
+      <div className="split-bar" role="img" aria-label={known.map((r) => `${r.count} ${RETURNING_LABELS[r.value as 'new']}`).join(', ')}>
+        {sum === 0 && <span className="split-empty" />}
+        {known.map((r) =>
+          r.count > 0 ? (
+            <span
+              key={r.value}
+              className={`split-fill returning-${r.value}`}
+              style={{ flexGrow: r.count }}
+              title={`${RETURNING_LABELS[r.value as 'new']}: ${r.count} of ${sum} (${percent(r.count / sum)}) · ${r.confirmed} confirmed`}
+            />
+          ) : null,
+        )}
+      </div>
+      <ul className="split-legend">
+        {known.map((r) => (
+          <li key={r.value}>
+            <span className={`split-swatch returning-${r.value}`} aria-hidden="true" />
+            <span className="split-name">{RETURNING_LABELS[r.value as 'new']}</span>
+            <span className="split-count">{r.count}</span>
+            <span className="muted">{sum ? percent(r.count / sum) : '—'} · {r.confirmed} confirmed</span>
+          </li>
+        ))}
+      </ul>
+      {blank > 0 && (
+        <p className="overview-note">
+          {blank} of {total} not looked up yet. They’re checked against the spreadsheet’s “Student Database” tab by name, phone or email.
+        </p>
+      )}
+    </>
+  )
+}
+
 /**
  * The Sign-ups page's overview: expected turnout, mentors to students, who's coming, contact
  * statuses, how people heard, and the group chats. `onShowChatList` filters the list to the
@@ -43,7 +83,7 @@ function BarList({ rows, total }: { rows: { key: string; label: ReactNode; count
 export function SignupsOverview({ overview, capacity, columns, onShowChatList }: {
   overview: Overview
   capacity: number | null
-  columns: { referral: boolean; chat: boolean; chatAdded: boolean }
+  columns: { referral: boolean; chat: boolean; groupChat: boolean; returning: boolean }
   onShowChatList: () => void
 }) {
   const { estimate, ratios, chats } = overview
@@ -153,6 +193,14 @@ export function SignupsOverview({ overview, capacity, columns, onShowChatList }:
         />
       </Card>
 
+      <Card title="New vs returning">
+        {columns.returning ? (
+          <ReturningChart rows={overview.returning} total={overview.total} />
+        ) : (
+          <p className="overview-note">The sheet’s New or Returning column is added the next time it’s read.</p>
+        )}
+      </Card>
+
       <Card title="How they heard">
         {columns.referral ? (
           <>
@@ -183,6 +231,14 @@ export function SignupsOverview({ overview, capacity, columns, onShowChatList }:
                 <dd>{chats.added}</dd>
               </div>
             </dl>
+            <BarList
+              total={overview.total}
+              rows={chats.stages.map((s) => ({
+                key: s.value,
+                label: <span className={`checkin-status chat-${s.value}`}>{s.label}</span>,
+                count: s.count,
+              }))}
+            />
             {chats.confirmed > 0 && (
               <span className="bar-track is-progress" title={`${chats.confirmed - chats.toAdd} of ${chats.confirmed} confirmed are in the chats`}>
                 <span className="bar-fill" style={{ width: `${((chats.confirmed - chats.toAdd) / chats.confirmed) * 100}%` }} />
@@ -199,8 +255,8 @@ export function SignupsOverview({ overview, capacity, columns, onShowChatList }:
                 </p>
               )
             )}
-            {!columns.chatAdded && (
-              <p className="overview-note">Add a checkbox column named “Added to Group Chat” to the sheet to tick people off here.</p>
+            {!columns.groupChat && (
+              <p className="overview-note">The sheet’s Group Chat Status column is added the next time it’s read.</p>
             )}
           </>
         ) : (

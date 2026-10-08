@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { api, ApiError, errorMessage } from '../api'
 import { useApp } from '../appContext'
-import { ChartIcon, CheckIcon, CloseIcon, MailIcon, MessageIcon, PhoneIcon, RefreshIcon, SearchIcon } from '../components/icons'
+import { ChartIcon, CloseIcon, MailIcon, MessageIcon, PhoneIcon, RefreshIcon, SearchIcon } from '../components/icons'
 import { Segmented } from '../components/Segmented'
 import { DetailChips, SignupPersonDialog } from '../components/SignupPersonDialog'
 import { SheetViews } from '../components/SheetViews'
@@ -14,10 +14,11 @@ import {
   readTab,
   StatusChangedError,
   withSheetAccess,
-  writeChatAdded,
+  writeGroupChat,
   writeStatus,
 } from '../google'
 import { readForSync, resyncSheet } from '../resync'
+import { CHAT_STAGES, chatStageOf, GROUP_CHAT_STATUSES, groupChatLabel, needsChat, type GroupChatStatus } from '../signupColumns'
 import { overviewOf, type OverviewPlan } from '../signupOverview'
 import {
   BEFORE_CONTACT,
@@ -56,7 +57,7 @@ type LevelFilter = (typeof LEVEL_FILTERS)[number]['value']
 
 type Read = ReturnType<typeof readContacts>
 
-// The filter for confirmed people who asked to join the group chats and aren't in them yet.
+// The filter for confirmed people who asked to join the group chats and aren't in them yet (To Do or Pending).
 const CHAT_GROUP = 'chat'
 
 type PlanInfo = Omit<OverviewPlan, 'students'>
@@ -115,7 +116,9 @@ export function SignupsPage() {
   const [reading, setReading] = useState(false)
   // Statuses being written, shown right away.
   const [pending, setPending] = useState<Map<string, ContactStatus>>(new Map())
-  const [pendingChat, setPendingChat] = useState<Map<string, boolean>>(new Map())
+  const [pendingChat, setPendingChat] = useState<Map<string, GroupChatStatus>>(new Map())
+  // Why the sheet's status columns couldn't be added or filled in, e.g. it's view-only.
+  const [tendError, setTendError] = useState<string | null>(null)
   const [overviewOpen, setOverviewOpen] = useState(false)
   // The person view; by key, so it shows their latest row.
   const [openKey, setOpenKey] = useState<string | null>(null)
@@ -177,11 +180,12 @@ export function SignupsPage() {
       try {
         const run = () => readTab(config, current.spreadsheet_id, current.tab_id)
         if (!interactive) await getAccessToken(config, { interactive: false })
-        const data = await readForSync(current, interactive ? () => withSheetAccess(config, current.spreadsheet_id, run) : run)
+        const data = await readForSync(config, current, interactive ? () => withSheetAccess(config, current.spreadsheet_id, run) : run)
         if (!data) return
         if (sheetRef.current?.id !== current.id) return
         if (writes.current.running || writes.current.done !== before) return
         setRead(readContacts(data.values, current.field_map))
+        setTendError(data.tendError ?? null)
         setAccess('ok')
         // New rows and statuses changed in the sheet go on to check-in.
         const synced = await resyncSheet(config, current, data, {
@@ -269,16 +273,16 @@ export function SignupsPage() {
 
   const statusOfContact = (contact: Contact) => pending.get(contact.key) ?? contact.status
 
-  /** Ticks or clears their "Added to Group Chat" box. With `expected` (undo and redo), only if it still shows that. */
+  /** Sets their Group Chat Status. With `expected` (undo and redo), only if it still shows that. */
   const applyChat = useCallback(
-    async (key: string, added: boolean, expected?: boolean) => {
+    async (key: string, status: GroupChatStatus, expected?: GroupChatStatus | null) => {
       const current = sheetRef.current
       if (!current) return
-      setPendingChat((p) => new Map(p).set(key, added))
+      setPendingChat((p) => new Map(p).set(key, status))
       writes.current.running++
       const run = queue.current.then(async () => {
-        await writeChatAdded(config, current, key, added, expected)
-        setRead((r) => r && { ...r, contacts: r.contacts.map((c) => (c.key === key ? { ...c, chatAdded: added } : c)) })
+        await writeGroupChat(config, current, key, status, expected)
+        setRead((r) => r && { ...r, contacts: r.contacts.map((c) => (c.key === key ? { ...c, groupChat: status } : c)) })
       })
       queue.current = run.catch(() => {})
       try {
@@ -287,7 +291,7 @@ export function SignupsPage() {
         writes.current.running--
         writes.current.done++
         setPendingChat((p) => {
-          if (p.get(key) !== added) return p
+          if (p.get(key) !== status) return p
           const next = new Map(p)
           next.delete(key)
           return next
@@ -297,21 +301,23 @@ export function SignupsPage() {
     [config],
   )
 
-  const chatAddedOf = (contact: Contact) => pendingChat.get(contact.key) ?? contact.chatAdded
+  const groupChatOf = (contact: Contact) => pendingChat.get(contact.key) ?? contact.groupChat
 
-  async function toggleChat(contact: Contact) {
-    const before = chatAddedOf(contact)
+  async function changeChat(contact: Contact, status: GroupChatStatus) {
+    const before = groupChatOf(contact)
+    if (before === status) return
     setError(null)
     try {
-      await applyChat(contact.key, !before)
+      await applyChat(contact.key, status)
       push({
-        label: `${contact.name}’s group chat box`,
-        undo: () => applyChat(contact.key, before, !before),
-        redo: () => applyChat(contact.key, !before, before),
+        label: `${contact.name}’s group chat status`,
+        // A blank cell is filled in again by the next read, so undo goes back to what it would get.
+        undo: () => applyChat(contact.key, before ?? 'not_invited', status),
+        redo: () => applyChat(contact.key, status, before ?? 'not_invited'),
       })
     } catch (err) {
       if (err instanceof NeedsSignInError || err instanceof NoAccessError) setAccess('needs-access')
-      setError(errorMessage(err, 'Couldn’t update the group chat box.'))
+      setError(errorMessage(err, 'Couldn’t change the group chat status.'))
     }
   }
 
@@ -362,7 +368,7 @@ export function SignupsPage() {
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheet.spreadsheet_id)}/edit#gid=${sheet.tab_id}`
   const contacts = read?.contacts ?? []
   const inGroup = (contact: Contact, value: string) => {
-    if (value === CHAT_GROUP) return statusOfContact(contact) === 'confirmed' && contact.wantsChat && !chatAddedOf(contact)
+    if (value === CHAT_GROUP) return statusOfContact(contact) === 'confirmed' && contact.wantsChat && needsChat(groupChatOf(contact))
     const statuses = STATUS_GROUPS.find((g) => g.value === value)?.statuses
     return !statuses || statuses.includes(statusOfContact(contact))
   }
@@ -396,7 +402,7 @@ export function SignupsPage() {
   // With what's still being saved, so the numbers move as soon as something changes.
   const overview =
     read && plan && students
-      ? overviewOf(contacts.map((c) => ({ ...c, status: statusOfContact(c), chatAdded: chatAddedOf(c) })), { ...plan, students })
+      ? overviewOf(contacts.map((c) => ({ ...c, status: statusOfContact(c), groupChat: groupChatOf(c) })), { ...plan, students })
       : null
 
   return (
@@ -463,7 +469,7 @@ export function SignupsPage() {
             <SignupPersonDialog
               contact={person}
               status={person ? statusOfContact(person) : 'not_contacted'}
-              chatAdded={person ? chatAddedOf(person) : false}
+              groupChat={person ? groupChatOf(person) : null}
               event={event}
               message={person ? fillMessage(template, person, event) : ''}
               onContacted={contacted}
@@ -575,6 +581,9 @@ export function SignupsPage() {
               </div>
             )}
           </div>
+          {tendError && (
+            <p className="signups-note">The sheet’s status columns and statistics couldn’t be updated: {tendError}</p>
+          )}
           {!read.columns.status && (
             <p className="signups-note">No Contact Status column found, so statuses can’t be changed here. Name a column “Contact Status” in the sheet.</p>
           )}
@@ -584,7 +593,7 @@ export function SignupsPage() {
           <ul className="signups-list">
             {shown.map((c) => {
               const status = statusOfContact(c)
-              const chatAdded = chatAddedOf(c)
+              const groupChat = groupChatOf(c)
               const message = fillMessage(template, c, event)
               const phone = dialable(c.phone)
               const when = signedUpParts(c.signedUp)
@@ -605,35 +614,40 @@ export function SignupsPage() {
                       {c.name}
                       {c.nickname && <span className="checkin-nickname">“{c.nickname}”</span>}
                     </button>
-                    {(c.gender || c.level) && (
+                    {(c.gender || c.level || c.returning) && (
                       <span className="signup-meta">
                         <DetailChips contact={c} />
                       </span>
                     )}
                   </div>
                   <div className="signup-controls">
-                    <span className="chat-slot">
-                      {(c.wantsChat || chatAdded) && (
-                        <button
-                          type="button"
-                          className={`chat-toggle${chatAdded ? ' is-on' : status === 'confirmed' ? ' is-due' : ''}`}
-                          aria-pressed={chatAdded}
-                          disabled={!read.columns.chatAdded || pendingChat.has(c.key)}
-                          onClick={() => toggleChat(c)}
-                          title={
-                            !read.columns.chatAdded
-                              ? 'Add a checkbox column named “Added to Group Chat” to the sheet'
-                              : chatAdded
-                                ? 'In the group chats. Click to clear.'
-                                : status === 'confirmed'
-                                  ? 'Confirmed and asked to join the group chats. Click once they’re added.'
-                                  : 'Asked to join the group chats. Add them once they confirm.'
-                          }
-                        >
-                          {chatAdded && <CheckIcon />} {chatAdded ? 'In chats' : 'Add to chats'}
-                        </button>
-                      )}
-                    </span>
+                    <select
+                      className={`status-select chat-select chat-${groupChat ? chatStageOf(groupChat) : 'none'}${
+                        groupChat && chatStageOf(groupChat) !== 'complete' && status === 'confirmed' && c.wantsChat ? ' is-due' : ''
+                      }`}
+                      value={groupChat ?? ''}
+                      disabled={!read.columns.groupChat || pendingChat.has(c.key)}
+                      onChange={(e) => changeChat(c, e.target.value as GroupChatStatus)}
+                      aria-label={`Group chat status for ${c.name}`}
+                      title={
+                        !read.columns.groupChat
+                          ? 'The sheet’s Group Chat Status column is added the next time it’s read'
+                          : groupChat
+                            ? `Group chats: ${groupChatLabel(groupChat)}`
+                            : 'Group chats'
+                      }
+                    >
+                      {!groupChat && <option value="">Group chats…</option>}
+                      {CHAT_STAGES.map((stage) => (
+                        <optgroup key={stage.value} label={stage.label}>
+                          {GROUP_CHAT_STATUSES.filter((s) => s.stage === stage.value).map((s) => (
+                            <option key={s.value} value={s.value}>
+                              {s.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
                     <select
                       className={`status-select status-${status}`}
                       value={status}
