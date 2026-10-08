@@ -667,27 +667,79 @@ async function groupStats(config: AppConfig, spreadsheetId: string, sheetId: num
   ])
 }
 
+type TableColumn = {
+  columnIndex: number
+  columnName?: string
+  columnType?: string
+  dataValidationRule?: { condition: { type: string; values: { userEnteredValue: string }[] } }
+}
+type SheetsTable = {
+  tableId: string
+  range: { startRowIndex?: number; endRowIndex?: number; startColumnIndex?: number; endColumnIndex?: number }
+  columnProperties?: TableColumn[]
+}
+
 /**
  * The status columns' dropdowns, on their own so a sheet that won't take them still gets everything
- * else. Returns why not, or null. They're only set again by a new layout or version of the app, so a
- * display style chosen by hand in Sheets (the API can't choose one) stays.
+ * else. Returns why not, or null. They're only set again by a new layout or version of the app.
+ *
+ * A column inside a Google Sheets table (someone made one, or an earlier version did) can't take a
+ * plain dropdown rule, so it becomes one of the table's dropdown columns instead, which show their
+ * options as chips. Any other column gets a plain dropdown, which the API can only show with arrows.
  */
 async function applyDropdowns(config: AppConfig, spreadsheetId: string, sheetId: number, tending: Tending): Promise<string | null> {
   if (tending.dropdowns.length === 0) return null
-  try {
-    await batchUpdate(
-      config,
-      spreadsheetId,
-      tending.dropdowns.map(({ column, options }) => ({
+  const meta = await sheetsFetch<{ sheets: { properties: { sheetId: number }; tables?: SheetsTable[] }[] }>(
+    config,
+    `${encodeURIComponent(spreadsheetId)}?fields=${encodeURIComponent('sheets(properties.sheetId,tables(tableId,range,columnProperties))')}`,
+  ).catch(() => null)
+  const tables = meta?.sheets.find((s) => s.properties.sheetId === sheetId)?.tables ?? []
+  const tableOf = (column: number) =>
+    tables.find(({ range: r }) =>
+      (r.startColumnIndex ?? 0) <= column && column < (r.endColumnIndex ?? Infinity) &&
+      (r.startRowIndex ?? 0) <= tending.headerRow && tending.headerRow < (r.endRowIndex ?? Infinity),
+    )
+  const rule = (options: { label: string }[]) => ({
+    condition: { type: 'ONE_OF_LIST', values: options.map((o) => ({ userEnteredValue: o.label })) },
+  })
+
+  const requests: unknown[] = []
+  const changed = new Map<SheetsTable, TableColumn[]>()
+  for (const { column, header, options } of tending.dropdowns) {
+    const table = tableOf(column)
+    if (!table) {
+      requests.push({
         setDataValidation: {
           range: { sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: column, endColumnIndex: column + 1 },
-          rule: { condition: { type: 'ONE_OF_LIST', values: options.map((o) => ({ userEnteredValue: o.label })) }, showCustomUi: true, strict: false },
+          rule: { ...rule(options), showCustomUi: true, strict: false },
         },
-      })),
-    )
+      })
+      continue
+    }
+    const columns = changed.get(table) ?? [...(table.columnProperties ?? [])]
+    const index = column - (table.range.startColumnIndex ?? 0)
+    const existing = columns.find((c) => c.columnIndex === index)
+    const dropdown: TableColumn = {
+      columnIndex: index,
+      columnName: existing?.columnName ?? header,
+      columnType: 'DROPDOWN',
+      dataValidationRule: rule(options),
+    }
+    changed.set(table, [...columns.filter((c) => c.columnIndex !== index), dropdown].sort((a, b) => a.columnIndex - b.columnIndex))
+  }
+  for (const [table, columnProperties] of changed) {
+    requests.push({ updateTable: { table: { tableId: table.tableId, columnProperties }, fields: 'columnProperties' } })
+  }
+  try {
+    await batchUpdate(config, spreadsheetId, requests)
     return null
   } catch (err) {
-    return `The status columns’ dropdowns couldn’t be set: ${errorMessage(err)}`
+    // One at a time, so the ones Google takes still go in.
+    const problems: string[] = []
+    for (const request of requests) {
+      await batchUpdate(config, spreadsheetId, [request]).catch((e) => problems.push(errorMessage(e)))
+    }
+    return problems.length ? `The status columns’ dropdowns couldn’t all be set: ${problems.join('; ')}` : null
   }
 }
 

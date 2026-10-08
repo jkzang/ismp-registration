@@ -20,7 +20,7 @@ export type SheetContextValue = {
   read: SheetRead | null
   setRead: Dispatch<SetStateAction<SheetRead | null>>
   access: 'checking' | 'needs-access' | 'ok'
-  /** Why the sheet's status columns and statistics couldn't be updated, e.g. it's view-only. */
+  /** What couldn't be done to the sheet's status columns and statistics, e.g. it's view-only; a sentence. */
   tendError: string | null
   /** Reads the tab and sends any change on to check-in; with `interactive`, from a click, so it may open Google's popups. */
   readSheet: (interactive: boolean) => Promise<void>
