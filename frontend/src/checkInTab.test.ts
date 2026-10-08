@@ -49,29 +49,37 @@ describe('the check-in tab', () => {
   it('lists everyone by name with whether they’re here and their table', () => {
     const rows = values(checkInLayout(plan, 'Fall - Check In').rows)
     expect(rows[0][0]).toBe('Fall - Check In')
-    expect(rows[1][0]).toMatch(/^2 of 3 checked in/)
-    expect(rows.slice(2, 6).map((r) => r.slice(0, 3))).toEqual([
+    expect(rows[1][0]).toBe('2 checked in  ·  3 signed up  ·  2 tables  ·  1 mentor')
+    expect(rows.slice(4, 8).map((r) => r.slice(0, 3))).toEqual([
       ['Name', 'Checked in', 'Table'],
-      ['Amy (A)', 'Yes', 'Table 1'],
-      ['Beth', 'Yes', ''],
-      ['Zoe', 'No', 'Table 1'],
+      ['Amy (A)', '✓  Here', 'Table 1'],
+      ['Beth', '✓  Here', '—'],
+      ['Zoe', 'Not yet', 'Table 1'],
     ])
   })
 
   it('shows each table with its group, mentors and students, those here first', () => {
     const rows = values(checkInLayout(plan, 'Fall - Check In').rows)
-    const column = (c: number) => rows.slice(3).map((r) => r[c]).filter(Boolean)
-    expect(column(4)).toEqual(['Table 1', 'Girls UG · 1 of 2 here', 'Grace Lee', '✓ Amy (A)', 'Zoe'])
-    expect(column(5)).toEqual(['Table 2', 'No group · 0 of 0 here', 'No mentor'])
+    const column = (c: number) => rows.slice(5).map((r) => r[c].trim()).filter(Boolean)
+    expect(column(4)).toEqual(['Table 1', 'Girls UG  ·  1 of 2 here', '★  Grace Lee', '✓  Amy (A)', 'Zoe'])
+    expect(column(6)).toEqual(['Table 2', 'No group  ·  0 of 0 here', 'No mentor'])
   })
 
-  it('keeps every row the same width', () => {
-    const { rows, columnCount } = checkInLayout(plan, 'Fall - Check In')
+  it('keeps every row the same width, with a height for each', () => {
+    const { rows, columnCount, rowHeights } = checkInLayout(plan, 'Fall - Check In')
     expect(rows.every((r) => r.length === columnCount)).toBe(true)
+    expect(rowHeights).toHaveLength(rows.length)
+  })
+
+  it('makes the cards in a row the same height, closed at the bottom', () => {
+    const { rows } = checkInLayout(plan, 'Fall - Check In')
+    const bottom = (c: number) => rows.findLastIndex((r) => r[c].userEnteredFormat?.borders?.bottom)
+    expect(bottom(4)).toBe(bottom(6))
+    expect(bottom(4)).toBe(5 + 4)
   })
 
   it('says when there are no tables yet', () => {
     const rows = values(checkInLayout({ ...plan, tables: [] }, 'Fall - Check In').rows)
-    expect(rows[3][4]).toBe('No tables planned yet.')
+    expect(rows[5][4]).toBe('No tables planned yet.')
   })
 })
