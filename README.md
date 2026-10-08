@@ -45,7 +45,7 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
     choose a dropdown's display style, so to see them as chips, once per sheet: select columns B–D,
     open Data → Data validation, and for each rule set Advanced options → Display style to *Chip*.
     The app only sets the dropdowns again for a new layout or version, which puts them back to
-    arrows. (It no longer tries making the sign-ups a Google Sheets table: Google refused that.)
+    arrows. (It no longer tries making the sign-ups a Google Sheets table; that ran into Google errors.)
   - Removes the empty rows under the last sign-up.
   - Fills blank Contact Status with *Not Contacted*.
   - Fills New or Returning by looking each person up in the spreadsheet's **Student Database** tab
