@@ -21,6 +21,8 @@ export type Contact = SignupRow & {
   chatAdded: boolean
   /** How they heard about the event, as answered. */
   referral: string
+  /** Their other answers on the form, labeled by header, for the person view. */
+  answers: { label: string; value: string }[]
 }
 
 const words = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
@@ -71,6 +73,9 @@ export function readContacts(values: string[][], fieldMap: FieldMap) {
   const parsed = parseSheet(values, { fieldMap: locateFieldMap(fieldMap) })
   const { columns } = parsed
   const extra = extraColumns(parsed.headers, new Set(Object.values(columns)))
+  // Everything not shown some other way.
+  const shownColumns = new Set([...Object.values(columns), extra.chatAdded, extra.referral, extra.joinChat, ...extra.social])
+  const answerColumns = parsed.headers.flatMap((h, i) => (h.trim() && !shownColumns.has(i) ? [i] : []))
   const contacts: Contact[] = parsed.rows.map((row, i) => {
     const index = parsed.rowIndexes[i]
     const socials = extra.social.flatMap((column) => {
@@ -88,6 +93,10 @@ export function readContacts(values: string[][], fieldMap: FieldMap) {
       wantsChat: extra.joinChat !== undefined ? YES.test(join) : socials.length > 0,
       chatAdded: isTicked(cellOf(values, index, extra.chatAdded)),
       referral: cellOf(values, index, extra.referral),
+      answers: answerColumns.flatMap((column) => {
+        const value = cellOf(values, index, column)
+        return value ? [{ label: parsed.headers[column].trim(), value }] : []
+      }),
     }
   })
   return {
@@ -180,6 +189,16 @@ export function signedUpWithin(signedUp: string, range: string, now = Date.now()
   if (Number.isNaN(time)) return false
   const age = (now - time) / DAY_MS
   return age >= days[0] && age < days[1]
+}
+
+/** The timestamp as a date and a time, for the Sign-ups list's own column. Null when it can't be read. */
+export function signedUpParts(text: string) {
+  const date = new Date(text)
+  if (!text || Number.isNaN(date.getTime())) return null
+  return {
+    date: date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
+    time: date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+  }
 }
 
 /** "WeChat ID" → "WeChat": the header, less the words that only say it's an ID. */

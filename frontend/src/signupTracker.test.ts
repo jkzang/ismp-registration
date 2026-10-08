@@ -71,3 +71,16 @@ describe('signedUpWithin', () => {
     expect(signedUpWithin('sometime', 'week', now)).toBe(false)
   })
 })
+
+describe('answers', () => {
+  it('keeps the other form answers, but not the columns shown elsewhere', () => {
+    const { contacts } = readContacts(
+      [
+        ['Timestamp', 'Name', 'Phone Number', 'WeChat ID', 'How did you hear about us?', 'Major', 'Dietary restrictions'],
+        ['10/1/2026 9:00:00', 'Amy Lin', '858', 'amylin', 'A friend', 'Biology', ''],
+      ],
+      { name: 'Name' },
+    )
+    expect(contacts[0].answers).toEqual([{ label: 'Major', value: 'Biology' }])
+  })
+})

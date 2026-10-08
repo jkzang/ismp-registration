@@ -4,6 +4,7 @@ import { api, ApiError, errorMessage } from '../api'
 import { useApp } from '../appContext'
 import { ChartIcon, CheckIcon, CloseIcon, MailIcon, MessageIcon, PhoneIcon, RefreshIcon, SearchIcon } from '../components/icons'
 import { Segmented } from '../components/Segmented'
+import { DetailChips, SignupPersonDialog } from '../components/SignupPersonDialog'
 import { SheetViews } from '../components/SheetViews'
 import { OverviewDialog } from '../components/SignupsOverview'
 import {
@@ -25,11 +26,10 @@ import {
   fillMessage,
   mailtoHref,
   readContacts,
-  shortTimestamp,
   SIGNED_UP_RANGES,
+  signedUpParts,
   signedUpWithin,
   smsHref,
-  socialLabel,
   STATUS_GROUPS,
   telHref,
   type Contact,
@@ -39,9 +39,6 @@ import { useUndo } from '../undo'
 
 // Other volunteers (and the form) change the sheet too; re-read it now and then, and on coming back to the tab.
 const REFRESH_MS = 30_000
-
-const GENDER_LABELS = { female: 'Girl', male: 'Guy' } as const
-const LEVEL_LABELS = { undergrad: 'Undergrad', grad: 'Grad', other: 'Not a student' } as const
 
 const GENDER_FILTERS = [
   { value: 'all', label: 'All' },
@@ -120,6 +117,8 @@ export function SignupsPage() {
   const [pending, setPending] = useState<Map<string, ContactStatus>>(new Map())
   const [pendingChat, setPendingChat] = useState<Map<string, boolean>>(new Map())
   const [overviewOpen, setOverviewOpen] = useState(false)
+  // The person view; by key, so it shows their latest row.
+  const [openKey, setOpenKey] = useState<string | null>(null)
   const [group, setGroup] = useState('all')
   const [query, setQuery] = useState('')
   const [signedUpRange, setSignedUpRange] = useState('any')
@@ -458,6 +457,20 @@ export function SignupsPage() {
             }}
           />
         )}
+        {(() => {
+          const person = contacts.find((c) => c.key === openKey) ?? null
+          return (
+            <SignupPersonDialog
+              contact={person}
+              status={person ? statusOfContact(person) : 'not_contacted'}
+              chatAdded={person ? chatAddedOf(person) : false}
+              event={event}
+              message={person ? fillMessage(template, person, event) : ''}
+              onContacted={contacted}
+              onClose={() => setOpenKey(null)}
+            />
+          )
+        })()}
         <section className="signups" aria-label="Sign-ups">
           <div className="signups-top">
             <label className="checkin-search">
@@ -574,27 +587,27 @@ export function SignupsPage() {
               const chatAdded = chatAddedOf(c)
               const message = fillMessage(template, c, event)
               const phone = dialable(c.phone)
+              const when = signedUpParts(c.signedUp)
               return (
                 <li key={c.key} className={pending.has(c.key) || pendingChat.has(c.key) ? 'is-saving' : ''}>
+                  <div className="signup-when" title={c.signedUp || undefined}>
+                    {when ? (
+                      <>
+                        <span className="signup-date">{when.date}</span>
+                        <span className="signup-time">{when.time}</span>
+                      </>
+                    ) : (
+                      <span className="signup-time">{c.signedUp || '—'}</span>
+                    )}
+                  </div>
                   <div className="signup-person">
-                    <span className="checkin-name">
+                    <button type="button" className="signup-name" onClick={() => setOpenKey(c.key)} aria-haspopup="dialog">
                       {c.name}
                       {c.nickname && <span className="checkin-nickname">“{c.nickname}”</span>}
-                    </span>
-                    <span className="signup-meta">
-                      {c.gender && <span className={`detail-chip gender-${c.gender}`}>{GENDER_LABELS[c.gender]}</span>}
-                      {c.level && <span className={`detail-chip level-${c.level}`}>{LEVEL_LABELS[c.level]}</span>}
-                      {c.signedUp && <span title={c.signedUp}>Signed up {shortTimestamp(c.signedUp)}</span>}
-                    </span>
-                    {(c.phone || c.email || c.socials.length > 0) && (
-                      <span className="signup-reach">
-                        {c.phone && <span>{c.phone}</span>}
-                        {c.email && <span>{c.email}</span>}
-                        {c.socials.map((s) => (
-                          <span key={s.label} title={s.label}>
-                            {socialLabel(s.label)}: {s.id}
-                          </span>
-                        ))}
+                    </button>
+                    {(c.gender || c.level) && (
+                      <span className="signup-meta">
+                        <DetailChips contact={c} />
                       </span>
                     )}
                   </div>
