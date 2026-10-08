@@ -46,6 +46,8 @@ class RowsSerializer(serializers.Serializer):
     field_map = serializers.DictField(child=serializers.CharField(max_length=200, allow_blank=True))
     rows = RowSerializer(many=True, max_length=5000)
     warnings = serializers.ListField(child=serializers.CharField(max_length=500), max_length=20, required=False, default=list)
+    # The sync ticket fetched just before the sheet was read.
+    read_at = serializers.DateTimeField(required=False, allow_null=True, default=None)
 
     def validate_field_map(self, value):
         unknown = set(value) - set(FIELD_KEYS)
@@ -95,6 +97,10 @@ class SheetSerializer(serializers.ModelSerializer):
 class CheckInSerializer(serializers.Serializer):
     gender = serializers.ChoiceField(choices=models.Gender.choices, required=False)
     level = serializers.ChoiceField(choices=[models.UNDERGRAD, models.GRAD], required=False)
+
+
+class StatusSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=models.ContactStatus.choices)
 
 
 class SimulateSerializer(serializers.Serializer):

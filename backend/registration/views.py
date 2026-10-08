@@ -226,12 +226,25 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
         data = payload.validated_data
         with transaction.atomic():
             self._locked_plan(sheet)
+            sheet = models.SignupSheet.objects.select_for_update().get(pk=sheet.pk)
+            read_at = data['read_at'] or timezone.now()
+            if sheet.rows_read_at and read_at < sheet.rows_read_at:
+                return Response(
+                    {'detail': 'A newer read of the sheet was already synced.'}, status=status.HTTP_409_CONFLICT,
+                )
+            sheet.rows_read_at = read_at
             counts = replace_rows(sheet, data['rows'])
             sheet.spreadsheet_title, sheet.tab_title = data['spreadsheet_title'], data['tab_title']
             sheet.field_map, sheet.warnings = data['field_map'], data['warnings']
             sheet.synced_at = timezone.now()
             sheet.save()
         return Response({'sheet': self.get_serializer(self.get_queryset().get(pk=sheet.pk)).data, **counts})
+
+    @action(detail=True, methods=['get'], url_path='sync-ticket')
+    def sync_ticket(self, request, pk=None):
+        """The server's time, fetched just before the browser reads the sheet; see rows_read_at."""
+        self.get_object()
+        return Response({'ticket': timezone.now()})
 
     def _locked_plan(self, sheet):
         # Locked so a board save, re-plan or re-sync can't overwrite a seat handed out at check-in.
@@ -348,6 +361,19 @@ class SignupViewSet(ChapterScoped, viewsets.GenericViewSet):
         signup = self.get_object()
         signup.waitlisted_at = None
         signup.save(update_fields=['waitlisted_at'])
+        return Response({'student': seating.student_of(signup)})
+
+    # Set from the Sign-ups page, which writes the same status into the Google Sheet's column itself.
+    @action(detail=True, methods=['post'], url_path='status')
+    def set_status(self, request, pk=None):
+        payload = serializers.StatusSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        signup = self.get_object()
+        with transaction.atomic():
+            signup.status = payload.validated_data['status']
+            signup.save(update_fields=['status'])
+            # Any read of the sheet from before this may not have the new status.
+            models.SignupSheet.objects.filter(pk=signup.sheet_id).update(rows_read_at=timezone.now())
         return Response({'student': seating.student_of(signup)})
 
     @action(detail=True, methods=['post'], url_path='undo-check-in')

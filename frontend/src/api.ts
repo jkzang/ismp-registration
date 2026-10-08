@@ -2,6 +2,7 @@ import type {
   AppConfig,
   Chapter,
   CheckInResult,
+  ContactStatus,
   CurrentUser,
   Gender,
   Level,
@@ -82,6 +83,8 @@ export const api = {
   importSheet: (data: NewSheet) => post<Sheet>('/sheets/', data),
   resyncSheet: (id: number, data: SheetRows) =>
     request<ResyncResult>(`/sheets/${id}/rows/`, { method: 'PUT', body: JSON.stringify(data) }),
+  /** The server's time, fetched just before reading the sheet so a re-sync can be put in order. */
+  syncTicket: (id: number) => request<{ ticket: string }>(`/sheets/${id}/sync-ticket/`),
   updateSheet: (id: number, data: Partial<Pick<Sheet, 'name' | 'capacity' | 'starts_at' | 'reserved_released_at'>>) =>
     request<Sheet>(`/sheets/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteSheet: (id: number) => request<void>(`/sheets/${id}/`, { method: 'DELETE' }),
@@ -102,5 +105,6 @@ export const api = {
     post<CheckInResult>(`/signups/${signupId}/check-in/`, door),
   undoCheckIn: (signupId: number) => post<{ student: PlanStudent }>(`/signups/${signupId}/undo-check-in/`),
   waitlist: (signupId: number) => post<{ student: PlanStudent }>(`/signups/${signupId}/waitlist/`),
+  setStatus: (signupId: number, status: ContactStatus) => post<{ student: PlanStudent }>(`/signups/${signupId}/status/`, { status }),
   undoWaitlist: (signupId: number) => post<{ student: PlanStudent }>(`/signups/${signupId}/undo-waitlist/`),
 }

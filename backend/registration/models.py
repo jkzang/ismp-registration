@@ -88,6 +88,9 @@ class SignupSheet(models.Model):
     starts_at = models.DateTimeField(null=True, blank=True)
     # Set when the door volunteer releases those spots early (or without a start time).
     reserved_released_at = models.DateTimeField(null=True, blank=True)
+    # When the sheet was read for the rows last synced (a sync ticket's time), or when a status was last
+    # set in the app. A re-sync from an older read is turned away, so it can't undo newer changes.
+    rows_read_at = models.DateTimeField(null=True, blank=True)
     imported_at = models.DateTimeField(auto_now_add=True)
     synced_at = models.DateTimeField(default=timezone.now)
 

@@ -4,19 +4,21 @@ import { api, ApiError, errorMessage } from '../api'
 import { useApp } from '../appContext'
 import { CheckInPanel } from '../components/CheckInPanel'
 import { CheckIcon, CloseIcon, PencilIcon, RefreshIcon, WarningIcon } from '../components/icons'
+import { SheetViews } from '../components/SheetViews'
 import { TablesBoard } from '../components/TablesBoard'
 import { useAttendanceSync, type AttendanceStatus } from '../attendanceSync'
 import { useCheckInTabSync, type CheckInTabStatus } from '../checkInTabSync'
-import { getAccessToken, NoAccessError, pickSpreadsheet, readDatabaseTab, readTab, writeCells } from '../google'
+import { getAccessToken, readTab, withSheetAccess } from '../google'
 import { toLocalInput } from '../localTime'
-import { importWarnings } from '../sheetParser'
-import { parseWithDatabase } from '../studentDatabase'
+import { describeResync, readForSync, resyncSheet } from '../resync'
 import { sheetName, signupsKey, type SeatingPlan, type Sheet } from '../types'
 import { useUndo } from '../undo'
 import { RESERVE_MINUTES } from '../capacity'
 
 // Several volunteers may check people in at once; keep everyone's view fresh.
 const REFRESH_MS = 20_000
+// How often the sign-up tab itself is read, so new rows and status changes come in without a Re-sync.
+const SHEET_READ_MS = 30_000
 
 function CapacityField({ sheet, onSaved }: { sheet: Sheet; onSaved: (sheet: Sheet) => void }) {
   const { push } = useUndo()
@@ -285,12 +287,28 @@ export function SheetPage() {
   // Narrow screens show one panel at a time.
   const [panel, setPanel] = useState<'checkin' | 'tables'>('checkin')
 
+  const sheetRef = useRef(sheet)
+  sheetRef.current = sheet
+  const planRef = useRef(plan)
+  planRef.current = plan
+
+  /** Takes a fresh plan, and asks about re-planning when the sign-ups it was planned for changed. */
+  const takePlan = useCallback((next: SeatingPlan) => {
+    const before = planRef.current
+    // Once check-in starts the tables are set, so there's nothing to ask.
+    const planned = next.tables.length > 0 && !next.students.some((s) => s.checked_in)
+    if (!planned) setSignupsChanged(false)
+    else if (before && signupsKey(next) !== signupsKey(before)) setSignupsChanged(true)
+    planRef.current = next
+    setPlan(next)
+  }, [])
+
   const load = useCallback(
     () => Promise.all([api.getSheet(sheetId), api.getPlan(sheetId)]).then(([s, p]) => {
       setSheet(s)
-      setPlan(p)
+      takePlan(p)
     }),
-    [sheetId],
+    [sheetId, takePlan],
   )
 
   useEffect(() => {
@@ -313,55 +331,64 @@ export function SheetPage() {
     }
   }, [load, navigate, preloaded])
 
-  /** Runs a Google Sheets call, first getting a token (call from a click, for the popup). Null if
-   *  the person closes the Picker. */
-  async function withSheetAccess<T>(sheet: Sheet, run: () => Promise<T>): Promise<T | null> {
-    await getAccessToken(config)
+  // Reads the sign-up tab in the background and brings any change into the app. It never opens
+  // Google's popup: without access it waits (the check-in tab's chip offers to connect).
+  const pulling = useRef(false)
+  const pull = useCallback(async () => {
+    const current = sheetRef.current
+    if (!current || pulling.current || document.visibilityState !== 'visible') return
+    pulling.current = true
     try {
-      return await run()
-    } catch (err) {
-      if (!(err instanceof NoAccessError)) throw err
-      // Someone else imported it: this person has to pick the file once before the app can use it.
-      const picked = await pickSpreadsheet(config, await getAccessToken(config), sheet.spreadsheet_id)
-      return picked ? run() : null
+      await getAccessToken(config, { interactive: false })
+      const data = await readForSync(current, () => readTab(config, current.spreadsheet_id, current.tab_id))
+      if (!data) return
+      const synced = await resyncSheet(config, current, data, {
+        auto: true,
+        knownKeys: planRef.current?.students.map((s) => s.key),
+      })
+      if (synced && sheetRef.current?.id === current.id) {
+        setSheet(synced.result.sheet)
+        takePlan(await api.getPlan(current.id))
+      }
+    } catch {
+      // Re-sync shows what's wrong.
+    } finally {
+      pulling.current = false
     }
-  }
+  }, [config, takePlan])
+
+  const loadedId = sheet?.id
+  useEffect(() => {
+    if (loadedId === undefined) return
+    pull()
+    const timer = setInterval(pull, SHEET_READ_MS)
+    window.addEventListener('focus', pull)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', pull)
+    }
+  }, [loadedId, pull])
 
   async function resync() {
     if (!sheet) return
     setResyncing(true)
     setError(null)
     try {
-      const data = await withSheetAccess(sheet, () => readTab(config, sheet.spreadsheet_id, sheet.tab_id))
+      const data = await readForSync(sheet, () =>
+        withSheetAccess(config, sheet.spreadsheet_id, () => readTab(config, sheet.spreadsheet_id, sheet.tab_id)),
+      )
       if (!data) return
-      const database = await readDatabaseTab(config, sheet.spreadsheet_id, data.tabs, sheet.tab_id)
-      const { parsed, fills } = parseWithDatabase(data.values, database, { fieldMap: sheet.field_map })
-      // Doesn't hold up the re-sync; the filled values are imported either way.
-      let writeError: string | null = null
-      try {
-        await writeCells(config, sheet.spreadsheet_id, data.tabTitle, fills)
-      } catch (err) {
-        writeError = errorMessage(err, 'Couldn’t write to the sheet.')
+      const synced = await resyncSheet(config, sheet, data)
+      // Another volunteer's device synced the sheet even more recently.
+      if (!synced) {
+        takePlan(await api.getPlan(sheet.id))
+        notify('Re-synced: already up to date')
+        return
       }
-      const result = await api.resyncSheet(sheet.id, {
-        spreadsheet_title: data.spreadsheetTitle,
-        tab_title: data.tabTitle,
-        field_map: parsed.fieldMap,
-        rows: parsed.rows,
-        warnings: importWarnings(parsed),
-      })
+      const { result, writeError } = synced
       setSheet(result.sheet)
-      const next = await api.getPlan(sheet.id)
-      setPlan(next)
-      // Once check-in starts the tables are set, so there's nothing to ask.
-      const planned = next.tables.length > 0 && !next.students.some((s) => s.checked_in)
-      setSignupsChanged(planned && !!plan && signupsKey(next) !== signupsKey(plan))
-      const changes = [
-        result.added && `${result.added} added`,
-        result.removed && `${result.removed} removed`,
-        fills.length && `${fills.length} filled from Student Database${writeError ? ' (not written to the sheet)' : ''}`,
-      ].filter(Boolean)
-      notify(changes.length ? `Re-synced: ${changes.join(' · ')}` : 'Re-synced: no new or removed sign-ups')
+      takePlan(await api.getPlan(sheet.id))
+      notify(describeResync(synced))
       if (writeError) setError(`The values from the Student Database weren’t written to the sheet: ${writeError}`)
       refreshSheets().catch(() => {})
     } catch (err) {
@@ -386,6 +413,7 @@ export function SheetPage() {
       <header className="sheet-head">
         <div className="sheet-heading">
           <SheetTitle sheet={sheet} url={sheetUrl} onSaved={setSheet} />
+          <SheetViews sheetId={sheet.id} />
         </div>
         <div className="sheet-head-actions">
           <WarningsChip warnings={sheet.warnings} />
@@ -393,7 +421,7 @@ export function SheetPage() {
           <CheckInTabChip
             status={checkInTab.status}
             attendance={attendance.status}
-            onConnect={() => attendance.connect().then(checkInTab.retry)}
+            onConnect={() => attendance.connect().then(() => Promise.all([checkInTab.retry(), pull()]))}
             onRetry={checkInTab.retry}
           />
           <StartField sheet={sheet} onSaved={setSheet} />
@@ -404,7 +432,7 @@ export function SheetPage() {
             onClick={resync}
             disabled={resyncing}
             aria-busy={resyncing}
-            title={resyncing ? 'Syncing…' : 'Pull new sign-ups from Google Sheets'}
+            title={resyncing ? 'Syncing…' : 'New sign-ups come in from Google Sheets by themselves; this pulls them now'}
           >
             {/* Same label and a fixed width while syncing, so the buttons beside it don't shift. */}
             <RefreshIcon /> Re-sync
