@@ -8,8 +8,11 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
 - Create or join a chapter. Everyone in a chapter shares its imported sheets and mentor roster.
 - **Add sign up sheet** opens Google's file picker. Pick the spreadsheet, then the tab, check the
   column mapping, and import. The same tab can be imported more than once.
-- Each sheet page has the check-in list and the table board side by side, a manual capacity,
-  and **Re-sync** to pull new sign-ups from the sheet (check-ins are kept).
+- Each sheet page has the check-in list and the table board side by side, and a manual capacity.
+  New rows and status changes in the sheet come in by themselves: both of a sheet's pages read
+  the sign-up tab every 30 seconds (and when you come back to the browser tab) and send any
+  change to the app, never on their own dropping more than half the sign-ups (a half-edited
+  sheet, more likely). **Re-sync** pulls them right away (check-ins are kept).
 - Importing a tab also adds a **[tab] - Check In** tab right after it in the spreadsheet: everyone
   signed up with whether they've checked in and their table, and the tables with their mentors.
   The sheet's page rewrites it whenever check-ins or the tables change (re-plans, seats handed out
@@ -20,9 +23,9 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   status. Changing someone's status writes it straight into the tab's Contact Status column (in
   the sheet's own spelling, e.g. its dropdown's) and into the app. **Text**, **Call** and **Email**
   open your phone's or computer's own app with a message you set under **Message** (kept on that
-  device), and move people who hadn't been contacted to *Awaiting response*. It re-reads the sheet
-  every 30 seconds and when you come back to the tab, so edits made in the sheet show up too, and
-  **Add to check-in** brings in sign-ups that aren't on the check-in list yet.
+  device), and move people who hadn't been contacted to *Awaiting response*. Both views list the
+  same people from the same tab; Sign-ups is where contact status is tracked, and Check-in picks
+  it up by itself.
 
 ## Privacy
 

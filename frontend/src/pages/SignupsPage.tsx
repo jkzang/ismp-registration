@@ -12,7 +12,7 @@ import {
   withSheetAccess,
   writeStatus,
 } from '../google'
-import { describeResync, resyncSheet } from '../resync'
+import { resyncSheet } from '../resync'
 import {
   BEFORE_CONTACT,
   DEFAULT_MESSAGE,
@@ -70,7 +70,7 @@ function useMessageTemplate(sheetId: number) {
  */
 export function SignupsPage() {
   const sheetId = Number(useParams().sheetId)
-  const { config, refreshSheets } = useApp()
+  const { config } = useApp()
   const { push, notify } = useUndo()
   const navigate = useNavigate()
   const [sheet, setSheet] = useState<Sheet | null>(null)
@@ -79,7 +79,6 @@ export function SignupsPage() {
   const [access, setAccess] = useState<'checking' | 'needs-access' | 'ok'>('checking')
   const [error, setError] = useState<string | null>(null)
   const [reading, setReading] = useState(false)
-  const [syncing, setSyncing] = useState(false)
   // Statuses being written, shown right away.
   const [pending, setPending] = useState<Map<string, ContactStatus>>(new Map())
   const [group, setGroup] = useState('all')
@@ -90,6 +89,8 @@ export function SignupsPage() {
   const sheetRef = useRef(sheet)
   sheetRef.current = sheet
   const studentByKey = useMemo(() => new Map((students ?? []).map((s) => [s.key, s])), [students])
+  const studentsRef = useRef(students)
+  studentsRef.current = students
   const studentByKeyRef = useRef(studentByKey)
   studentByKeyRef.current = studentByKey
   // Status writes go out one at a time. A read that overlaps one may predate it, so it's dropped.
@@ -143,6 +144,15 @@ export function SignupsPage() {
         if (writes.current.running || writes.current.done !== before) return
         setRead(readContacts(data.values, current.field_map))
         setAccess('ok')
+        // New rows and statuses changed in the sheet go on to check-in.
+        const synced = await resyncSheet(config, current, data, {
+          auto: true,
+          knownKeys: studentsRef.current?.map((s) => s.key),
+        })
+        if (synced && sheetRef.current?.id === current.id) {
+          setSheet(synced.result.sheet)
+          setStudents((await api.getPlan(current.id)).students)
+        }
       } catch (err) {
         if (err instanceof NeedsSignInError || err instanceof NoAccessError) setAccess('needs-access')
         else setError(errorMessage(err, 'Couldn’t read the sheet.'))
@@ -184,7 +194,7 @@ export function SignupsPage() {
           const { student: saved } = await api.setStatus(student.id, status)
           setStudents((list) => list && list.map((s) => (s.id === saved.id ? saved : s)))
         } catch {
-          setError('The status was saved in the sheet but not in the app. Re-sync on the Check-in page to catch it up.')
+          setError('The status was saved in the sheet; check-in will pick it up within a minute.')
         }
       })
       queue.current = run.catch(() => {})
@@ -240,28 +250,6 @@ export function SignupsPage() {
     await readSheet(sheet, true)
   }
 
-  /** Brings sign-ups the app doesn't have yet into check-in: a re-sync. */
-  async function addToCheckIn() {
-    if (!sheet) return
-    setSyncing(true)
-    setError(null)
-    try {
-      const data = await withSheetAccess(config, sheet.spreadsheet_id, () => readTab(config, sheet.spreadsheet_id, sheet.tab_id))
-      if (!data) return
-      const synced = await resyncSheet(config, sheet, data)
-      setSheet(synced.result.sheet)
-      setStudents((await api.getPlan(sheet.id)).students)
-      notify(describeResync(synced))
-      if (synced.writeError) setError(`The values from the Student Database weren’t written to the sheet: ${synced.writeError}`)
-      refreshSheets().catch(() => {})
-      readSheet(synced.result.sheet, false)
-    } catch (err) {
-      setError(errorMessage(err, 'Re-sync failed.'))
-    } finally {
-      setSyncing(false)
-    }
-  }
-
   if (!sheet) {
     return error ? <p className="error">{error}</p> : (
       <p className="muted loading-line" role="status">
@@ -287,7 +275,6 @@ export function SignupsPage() {
     (qDigits.length >= 3 && c.phone.replace(/\D/g, '').includes(qDigits))
   // The form adds rows at the bottom, so the newest sign-ups come first.
   const shown = contacts.filter((c) => inGroup(c, group) && matches(c)).reverse()
-  const notInApp = students ? contacts.filter((c) => !studentByKey.has(c.key)).length : 0
 
   return (
     <div className="sheet-page signups-page">
@@ -397,14 +384,6 @@ export function SignupsPage() {
               ))}
             </div>
           </div>
-          {notInApp > 0 && (
-            <p className="signups-note">
-              {notInApp} {notInApp === 1 ? 'sign-up isn’t' : 'sign-ups aren’t'} on the check-in list yet.
-              <button type="button" onClick={addToCheckIn} disabled={syncing} aria-busy={syncing}>
-                {syncing ? 'Adding…' : 'Add to check-in'}
-              </button>
-            </p>
-          )}
           {!read.columns.status && (
             <p className="signups-note">No Contact Status column found, so statuses can’t be changed here. Name a column “Contact Status” in the sheet.</p>
           )}
@@ -425,7 +404,6 @@ export function SignupsPage() {
                       {c.nickname && <span className="checkin-nickname">“{c.nickname}”</span>}
                     </span>
                     <span className="signup-meta">
-                      {students && !studentByKey.has(c.key) && <span className="checkin-flag">New</span>}
                       {details && <span>{details}</span>}
                       {c.signedUp && <span title={c.signedUp}>Signed up {shortTimestamp(c.signedUp)}</span>}
                     </span>

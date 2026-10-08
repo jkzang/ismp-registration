@@ -8,7 +8,7 @@ import { SheetViews } from '../components/SheetViews'
 import { TablesBoard } from '../components/TablesBoard'
 import { useAttendanceSync, type AttendanceStatus } from '../attendanceSync'
 import { useCheckInTabSync, type CheckInTabStatus } from '../checkInTabSync'
-import { readTab, withSheetAccess } from '../google'
+import { getAccessToken, readTab, withSheetAccess } from '../google'
 import { toLocalInput } from '../localTime'
 import { describeResync, resyncSheet } from '../resync'
 import { sheetName, signupsKey, type SeatingPlan, type Sheet } from '../types'
@@ -17,6 +17,8 @@ import { RESERVE_MINUTES } from '../capacity'
 
 // Several volunteers may check people in at once; keep everyone's view fresh.
 const REFRESH_MS = 20_000
+// How often the sign-up tab itself is read, so new rows and status changes come in without a Re-sync.
+const SHEET_READ_MS = 30_000
 
 function CapacityField({ sheet, onSaved }: { sheet: Sheet; onSaved: (sheet: Sheet) => void }) {
   const { push } = useUndo()
@@ -285,12 +287,28 @@ export function SheetPage() {
   // Narrow screens show one panel at a time.
   const [panel, setPanel] = useState<'checkin' | 'tables'>('checkin')
 
+  const sheetRef = useRef(sheet)
+  sheetRef.current = sheet
+  const planRef = useRef(plan)
+  planRef.current = plan
+
+  /** Takes a fresh plan, and asks about re-planning when the sign-ups it was planned for changed. */
+  const takePlan = useCallback((next: SeatingPlan) => {
+    const before = planRef.current
+    // Once check-in starts the tables are set, so there's nothing to ask.
+    const planned = next.tables.length > 0 && !next.students.some((s) => s.checked_in)
+    if (!planned) setSignupsChanged(false)
+    else if (before && signupsKey(next) !== signupsKey(before)) setSignupsChanged(true)
+    planRef.current = next
+    setPlan(next)
+  }, [])
+
   const load = useCallback(
     () => Promise.all([api.getSheet(sheetId), api.getPlan(sheetId)]).then(([s, p]) => {
       setSheet(s)
-      setPlan(p)
+      takePlan(p)
     }),
-    [sheetId],
+    [sheetId, takePlan],
   )
 
   useEffect(() => {
@@ -313,6 +331,43 @@ export function SheetPage() {
     }
   }, [load, navigate, preloaded])
 
+  // Reads the sign-up tab in the background and brings any change into the app. It never opens
+  // Google's popup: without access it waits (the check-in tab's chip offers to connect).
+  const pulling = useRef(false)
+  const pull = useCallback(async () => {
+    const current = sheetRef.current
+    if (!current || pulling.current || document.visibilityState !== 'visible') return
+    pulling.current = true
+    try {
+      await getAccessToken(config, { interactive: false })
+      const data = await readTab(config, current.spreadsheet_id, current.tab_id)
+      const synced = await resyncSheet(config, current, data, {
+        auto: true,
+        knownKeys: planRef.current?.students.map((s) => s.key),
+      })
+      if (synced && sheetRef.current?.id === current.id) {
+        setSheet(synced.result.sheet)
+        takePlan(await api.getPlan(current.id))
+      }
+    } catch {
+      // Re-sync shows what's wrong.
+    } finally {
+      pulling.current = false
+    }
+  }, [config, takePlan])
+
+  const loadedId = sheet?.id
+  useEffect(() => {
+    if (loadedId === undefined) return
+    pull()
+    const timer = setInterval(pull, SHEET_READ_MS)
+    window.addEventListener('focus', pull)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', pull)
+    }
+  }, [loadedId, pull])
+
   async function resync() {
     if (!sheet) return
     setResyncing(true)
@@ -320,14 +375,10 @@ export function SheetPage() {
     try {
       const data = await withSheetAccess(config, sheet.spreadsheet_id, () => readTab(config, sheet.spreadsheet_id, sheet.tab_id))
       if (!data) return
-      const synced = await resyncSheet(config, sheet, data)
+      const synced = (await resyncSheet(config, sheet, data))!
       const { result, writeError } = synced
       setSheet(result.sheet)
-      const next = await api.getPlan(sheet.id)
-      setPlan(next)
-      // Once check-in starts the tables are set, so there's nothing to ask.
-      const planned = next.tables.length > 0 && !next.students.some((s) => s.checked_in)
-      setSignupsChanged(planned && !!plan && signupsKey(next) !== signupsKey(plan))
+      takePlan(await api.getPlan(sheet.id))
       notify(describeResync(synced))
       if (writeError) setError(`The values from the Student Database weren’t written to the sheet: ${writeError}`)
       refreshSheets().catch(() => {})
@@ -361,7 +412,7 @@ export function SheetPage() {
           <CheckInTabChip
             status={checkInTab.status}
             attendance={attendance.status}
-            onConnect={() => attendance.connect().then(checkInTab.retry)}
+            onConnect={() => attendance.connect().then(() => Promise.all([checkInTab.retry(), pull()]))}
             onRetry={checkInTab.retry}
           />
           <StartField sheet={sheet} onSaved={setSheet} />
@@ -372,7 +423,7 @@ export function SheetPage() {
             onClick={resync}
             disabled={resyncing}
             aria-busy={resyncing}
-            title={resyncing ? 'Syncing…' : 'Pull new sign-ups from Google Sheets'}
+            title={resyncing ? 'Syncing…' : 'New sign-ups come in from Google Sheets by themselves; this pulls them now'}
           >
             {/* Same label and a fixed width while syncing, so the buttons beside it don't shift. */}
             <RefreshIcon /> Re-sync

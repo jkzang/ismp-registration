@@ -2744,11 +2744,6 @@ button .spinner {
   background: var(--warn-soft);
 }
 
-.signups-note button {
-  padding: 4px 12px;
-  background: var(--bg);
-}
-
 .signups-list {
   flex: 1;
   min-height: 0;
