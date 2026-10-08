@@ -6,6 +6,7 @@ import { CheckInPanel } from '../components/CheckInPanel'
 import { CheckIcon, CloseIcon, PencilIcon, RefreshIcon, WarningIcon } from '../components/icons'
 import { TablesBoard } from '../components/TablesBoard'
 import { useAttendanceSync, type AttendanceStatus } from '../attendanceSync'
+import { useCheckInTabSync, type CheckInTabStatus } from '../checkInTabSync'
 import { getAccessToken, NoAccessError, pickSpreadsheet, readDatabaseTab, readTab, writeCells } from '../google'
 import { toLocalInput } from '../localTime'
 import { importWarnings } from '../sheetParser'
@@ -202,6 +203,30 @@ function AttendanceChip({ status, onConnect, onRetry }: { status: AttendanceStat
   }
 }
 
+/** Only when the "- Check In" tab isn't keeping up. Needing sign-in is left to the attendance chip when it asks too. */
+function CheckInTabChip({ status, attendance, onConnect, onRetry }: {
+  status: CheckInTabStatus
+  attendance: AttendanceStatus
+  onConnect: () => void
+  onRetry: () => void
+}) {
+  if (status.kind === 'needs-access' && attendance.kind !== 'needs-access') {
+    return (
+      <button type="button" className="attendance-chip is-alert" onClick={onConnect} title="The check-in tab isn’t being updated from this device">
+        Connect Google Sheets
+      </button>
+    )
+  }
+  if (status.kind === 'error') {
+    return (
+      <button type="button" className="attendance-chip is-alert" onClick={onRetry} title={status.message}>
+        Check-in tab not updated · Retry
+      </button>
+    )
+  }
+  return null
+}
+
 /** A quiet count of formatting warnings that opens to the list; nothing when the tab looked fine. */
 function WarningsChip({ warnings }: { warnings: string[] }) {
   const [open, setOpen] = useState(false)
@@ -256,6 +281,7 @@ export function SheetPage() {
   // A re-sync changed the sign-ups the tables were planned for, and nobody has answered whether to re-plan.
   const [signupsChanged, setSignupsChanged] = useState(false)
   const attendance = useAttendanceSync(config, sheet, plan)
+  const checkInTab = useCheckInTabSync(config, sheet, plan)
   // Narrow screens show one panel at a time.
   const [panel, setPanel] = useState<'checkin' | 'tables'>('checkin')
 
@@ -364,6 +390,12 @@ export function SheetPage() {
         <div className="sheet-head-actions">
           <WarningsChip warnings={sheet.warnings} />
           <AttendanceChip status={attendance.status} onConnect={attendance.connect} onRetry={attendance.retry} />
+          <CheckInTabChip
+            status={checkInTab.status}
+            attendance={attendance.status}
+            onConnect={() => attendance.connect().then(checkInTab.retry)}
+            onRetry={checkInTab.retry}
+          />
           <StartField sheet={sheet} onSaved={setSheet} />
           <CapacityField sheet={sheet} onSaved={setSheet} />
           <button

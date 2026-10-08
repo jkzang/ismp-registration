@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { searchMentors } from '../absentMentors'
 import { api, errorMessage } from '../api'
 import { useApp } from '../appContext'
-import { getAccessToken, getSpreadsheet, getTabValues, pickSpreadsheet, readDatabaseTab, writeCells, type PickedFile, type Tab } from '../google'
+import { checkInLayout, isCheckInTab } from '../checkInTab'
+import { getAccessToken, getSpreadsheet, getTabValues, pickSpreadsheet, readDatabaseTab, writeCells, writeCheckInTab, type PickedFile, type Tab } from '../google'
 import { nextHour, toLocalInput } from '../localTime'
 import { importWarnings } from '../sheetParser'
 import { describeFills, parseWithDatabase } from '../studentDatabase'
@@ -140,20 +141,34 @@ export function ImportDialog({ start, onClose, onImported }: {
     })
     // Loaded while the dialog is still up; the page loads it itself if this fails.
     const plan = await api.getPlan(sheet.id).catch(() => null)
+    // The "- Check In" tab beside the sign-ups. The sheet's page keeps it up to date, and adds it
+    // if this fails.
+    let tabError: string | null = null
+    if (plan) {
+      setStages((done) => [...(done ?? []), `Adding the “${tab.title} - Check In” tab`])
+      try {
+        await writeCheckInTab(config, sheet, (title) => checkInLayout(plan, title))
+      } catch (err) {
+        tabError = errorMessage(err, 'Couldn’t add the check-in tab.')
+      }
+    }
     const imported = `Imported ${people} and planned the tables`
     notify(
-      !fills.length
+      (!fills.length
         ? imported
         : writeError
           ? `${imported}, but the ${fills.length} values from the Student Database weren’t written to the sheet: ${writeError}`
-          : `${imported} · filled ${fills.length} blank cells in the sheet from the Student Database (${describeFills(fills)})`,
+          : `${imported} · filled ${fills.length} blank cells in the sheet from the Student Database (${describeFills(fills)})`) +
+        (tabError ? ` · the check-in tab wasn’t added: ${tabError}` : ''),
     )
     onImported(sheet, plan)
   }
 
   // A spreadsheet with a single tab skips the choice of tab.
   async function openFile(file: PickedFile) {
-    const { title, tabs } = await getSpreadsheet(config, file.id)
+    const { title, tabs: all } = await getSpreadsheet(config, file.id)
+    // The app's own "- Check In" tabs aren't sign-ups.
+    const tabs = all.filter((t) => !isCheckInTab(t.title))
     if (tabs.length === 1) setStep({ kind: 'details', file, title, tabs, tab: tabs[0] })
     else setStep({ kind: 'tabs', file, title, tabs })
   }

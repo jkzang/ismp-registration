@@ -10,6 +10,10 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   column mapping, and import. The same tab can be imported more than once.
 - Each sheet page has the check-in list and the table board side by side, a manual capacity,
   and **Re-sync** to pull new sign-ups from the sheet (check-ins are kept).
+- Importing a tab also adds a **[tab] - Check In** tab right after it in the spreadsheet: everyone
+  signed up with whether they've checked in and their table, and the tables with their mentors.
+  The sheet's page rewrites it whenever check-ins or the tables change (re-plans, seats handed out
+  at the door, people moved by hand), so edits made in that tab are overwritten.
 
 ## Privacy
 

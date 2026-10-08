@@ -5,6 +5,7 @@
  * again) and are never sent to our server. The app asks only for the drive.file scope, so it can
  * read (and tick attendance in) just the spreadsheets someone picks in the Google Picker.
  */
+import { checkInTabTitle, type CheckInLayout } from './checkInTab'
 import { parseSheet, type FieldMap } from './sheetParser'
 import { isDatabaseTab } from './studentDatabase'
 import type { AppConfig } from './types'
@@ -268,4 +269,78 @@ export async function writeAttendance(
     }
   }
   return data.length
+}
+
+type TabProperties = { sheetId: number; title: string; index: number }
+
+async function listTabs(config: AppConfig, spreadsheetId: string) {
+  const fields = 'sheets.properties(sheetId,title,index)'
+  const meta = await sheetsFetch<{ sheets: { properties: TabProperties }[] }>(
+    config,
+    `${encodeURIComponent(spreadsheetId)}?fields=${encodeURIComponent(fields)}`,
+  )
+  return meta.sheets.map((s) => s.properties)
+}
+
+const batchUpdate = (config: AppConfig, spreadsheetId: string, requests: unknown[]) =>
+  sheetsFetch<{ replies: { addSheet?: { properties: TabProperties } }[] }>(
+    config,
+    `${encodeURIComponent(spreadsheetId)}:batchUpdate`,
+    { method: 'POST', body: JSON.stringify({ requests }) },
+  )
+
+/**
+ * Rewrites the sheet's "[tab] - Check In" tab with `layout`, adding it just after the sign-up tab
+ * the first time. The tab is found by its title, so it follows the sign-up tab if that's renamed.
+ */
+export async function writeCheckInTab(
+  config: AppConfig,
+  sheet: { spreadsheet_id: string; tab_id: number },
+  /** Given the check-in tab's title. */
+  layout: (title: string) => CheckInLayout,
+) {
+  const id = sheet.spreadsheet_id
+  let tabs = await listTabs(config, id)
+  const source = tabs.find((t) => t.sheetId === sheet.tab_id)
+  if (!source) throw new Error('The sign-up tab no longer exists in the spreadsheet.')
+  const title = checkInTabTitle(source.title)
+  const { rows, columnCount, frozenRows, columnWidths } = layout(title)
+  const grid = { rowCount: Math.max(rows.length, frozenRows + 1), columnCount, frozenRowCount: frozenRows }
+  try {
+    let tabId = tabs.find((t) => t.title === title)?.sheetId
+    if (tabId === undefined) {
+      try {
+        const added = await batchUpdate(config, id, [
+          { addSheet: { properties: { title, index: source.index + 1, gridProperties: grid } } },
+        ])
+        tabId = added.replies[0].addSheet!.properties.sheetId
+      } catch (err) {
+        // Another volunteer's device may have just added it.
+        tabs = await listTabs(config, id)
+        tabId = tabs.find((t) => t.title === title)?.sheetId
+        if (tabId === undefined) throw err
+      }
+    }
+    await batchUpdate(config, id, [
+      {
+        updateSheetProperties: {
+          properties: { sheetId: tabId, gridProperties: grid },
+          fields: 'gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount',
+        },
+      },
+      ...columnWidths.map((pixelSize, i) => ({
+        updateDimensionProperties: {
+          range: { sheetId: tabId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 },
+          properties: { pixelSize },
+          fields: 'pixelSize',
+        },
+      })),
+      // The whole tab, so whatever was there before is cleared.
+      { updateCells: { range: { sheetId: tabId }, rows: rows.map((values) => ({ values })), fields: 'userEnteredValue,userEnteredFormat' } },
+    ])
+  } catch (err) {
+    // It could be read, so this is Google's own sharing: view-only.
+    if (err instanceof NoAccessError) throw new Error('You can view this spreadsheet but not edit it. Ask its owner for edit access.')
+    throw err
+  }
 }
