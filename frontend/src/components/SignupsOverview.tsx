@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { Overview } from '../signupOverview'
-import { CheckIcon, WarningIcon } from './icons'
+import { CheckIcon, CloseIcon, WarningIcon } from './icons'
 
 const GENDERS = { female: 'Girls', male: 'Guys', '': 'No gender' } as const
 const LEVELS = { undergrad: 'Undergrad', grad: 'Grad', other: 'Not a student', '': 'No level' } as const
@@ -210,5 +210,50 @@ export function SignupsOverview({ overview, capacity, columns, onShowChatList }:
         )}
       </Card>
     </div>
+  )
+}
+
+/** The overview in a large modal. The close button, Escape or a click outside it closes it. */
+export function OverviewDialog({ open, onClose, title, ...props }: Parameters<typeof SignupsOverview>[0] & {
+  open: boolean
+  onClose: () => void
+  title: string
+}) {
+  const ref = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    const dialog = ref.current
+    if (!dialog) return
+    if (open && !dialog.open) dialog.showModal()
+    else if (!open && dialog.open) dialog.close()
+  }, [open])
+
+  return (
+    <dialog
+      ref={ref}
+      className="overview-dialog"
+      aria-labelledby="overview-title"
+      onClose={onClose}
+      // The dialog itself is only reachable on the backdrop; its content fills the box.
+      onClick={(e) => e.target === e.currentTarget && ref.current?.close()}
+    >
+      <header className="dialog-head">
+        <h2 id="overview-title">Overview · {title}</h2>
+        <button type="button" className="chip-icon" aria-label="Close" onClick={() => ref.current?.close()}>
+          <CloseIcon />
+        </button>
+      </header>
+      <div className="dialog-body">
+        {open && (
+          <SignupsOverview
+            {...props}
+            onShowChatList={() => {
+              props.onShowChatList()
+              ref.current?.close()
+            }}
+          />
+        )}
+      </div>
+    </dialog>
   )
 }

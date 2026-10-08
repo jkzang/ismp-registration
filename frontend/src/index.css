@@ -2717,7 +2717,7 @@ button .spinner {
 }
 
 .signups-top .checkin-search {
-  flex: 1 1 220px;
+  flex: 1 1 160px;
   max-width: 360px;
 }
 
@@ -3195,5 +3195,82 @@ button.chat-toggle.is-on {
   .signups-page .sheet-head-actions > button {
     flex: 1;
     width: auto;
+  }
+}
+
+/* Overview, Message and Refresh, at the end of the frozen search and filter row. */
+.signups-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.signups-tools > button {
+  height: 36px;
+}
+
+.signups-tools .tool-button {
+  width: 36px;
+  color: var(--text);
+  background: var(--btn);
+}
+
+.signups-tools .tool-button:hover {
+  background: var(--btn-hover);
+}
+
+.signups-tools .tool-button.is-on {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.signups-tools svg {
+  width: 16px;
+  height: 16px;
+}
+
+.signups-top .message-editor {
+  flex: 1 1 100%;
+}
+
+/* The overview, in a large modal. */
+.overview-dialog {
+  width: min(1120px, calc(100vw / var(--ui-scale) - 32px));
+  max-height: calc(100vh / var(--ui-scale) - 48px);
+  padding: 0;
+  border: none;
+  border-radius: 16px;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow-lift);
+}
+
+.overview-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  animation: dialog-in 140ms ease-out;
+}
+
+.overview-dialog::backdrop {
+  background: rgba(14, 19, 24, 0.45);
+}
+
+.overview-dialog .dialog-head h2 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overview-dialog[open] {
+    animation: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .signups-tools {
+    margin-left: 0;
   }
 }

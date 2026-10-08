@@ -4,7 +4,7 @@ import { api, ApiError, errorMessage } from '../api'
 import { useApp } from '../appContext'
 import { ChartIcon, CheckIcon, CloseIcon, MailIcon, MessageIcon, PhoneIcon, RefreshIcon, SearchIcon } from '../components/icons'
 import { SheetViews } from '../components/SheetViews'
-import { SignupsOverview } from '../components/SignupsOverview'
+import { OverviewDialog } from '../components/SignupsOverview'
 import {
   getAccessToken,
   NeedsSignInError,
@@ -44,30 +44,6 @@ type Read = ReturnType<typeof readContacts>
 
 // The filter for confirmed people who asked to join the group chats and aren't in them yet.
 const CHAT_GROUP = 'chat'
-
-/** Whether the overview is shown; remembered on this device. */
-function useOverviewShown() {
-  const key = 'signups-overview-hidden'
-  const [shown, setShown] = useState(() => {
-    try {
-      return localStorage.getItem(key) !== '1'
-    } catch {
-      return true
-    }
-  })
-  const toggle = useCallback(() => {
-    setShown((was) => {
-      try {
-        if (was) localStorage.setItem(key, '1')
-        else localStorage.removeItem(key)
-      } catch {
-        // Only a convenience; it just won't be remembered.
-      }
-      return !was
-    })
-  }, [])
-  return [shown, toggle] as const
-}
 
 type PlanInfo = Omit<OverviewPlan, 'students'>
 const planInfo = ({ mentors, excluded_mentor_ids, show_up_rates, walk_in_rate, ideal_per_mentor }: SeatingPlan): PlanInfo => ({
@@ -126,7 +102,7 @@ export function SignupsPage() {
   // Statuses being written, shown right away.
   const [pending, setPending] = useState<Map<string, ContactStatus>>(new Map())
   const [pendingChat, setPendingChat] = useState<Map<string, boolean>>(new Map())
-  const [overviewShown, toggleOverview] = useOverviewShown()
+  const [overviewOpen, setOverviewOpen] = useState(false)
   const [group, setGroup] = useState('all')
   const [query, setQuery] = useState('')
   const [editingMessage, setEditingMessage] = useState(false)
@@ -409,34 +385,6 @@ export function SignupsPage() {
               Connect Google Sheets
             </button>
           )}
-          <button
-            type="button"
-            className="with-icon"
-            aria-expanded={overviewShown}
-            onClick={toggleOverview}
-            title={overviewShown ? 'Hide the overview' : 'Show the overview'}
-          >
-            <ChartIcon /> Overview
-          </button>
-          <button
-            type="button"
-            className="with-icon"
-            aria-expanded={editingMessage}
-            onClick={() => setEditingMessage((open) => !open)}
-            title="The message Text and Email start with"
-          >
-            <MessageIcon /> Message
-          </button>
-          <button
-            type="button"
-            className={`with-icon resync-button${reading ? ' is-syncing' : ''}`}
-            onClick={() => readSheet(sheet, true)}
-            disabled={reading}
-            aria-busy={reading}
-            title="Read the latest from Google Sheets"
-          >
-            <RefreshIcon /> Refresh
-          </button>
         </div>
       </header>
       {error && (
@@ -446,26 +394,6 @@ export function SignupsPage() {
             <CloseIcon />
           </button>
         </p>
-      )}
-
-      {editingMessage && (
-        <div className="message-editor">
-          <label>
-            <span>Message for Text and Email</span>
-            <textarea rows={3} value={template} onChange={(e) => setTemplate(e.target.value)} />
-          </label>
-          <div className="message-editor-foot">
-            <p className="muted">
-              <code>{'{first}'}</code> is their nickname or first name, <code>{'{name}'}</code> their full name and{' '}
-              <code>{'{event}'}</code> “{event}”. Kept on this device only.
-            </p>
-            {template !== DEFAULT_MESSAGE && (
-              <button type="button" className="link-button" onClick={() => setTemplate(DEFAULT_MESSAGE)}>
-                Reset
-              </button>
-            )}
-          </div>
-        </div>
       )}
 
       {!read ? (
@@ -483,8 +411,11 @@ export function SignupsPage() {
         )
       ) : (
         <>
-        {overviewShown && overview && (
-          <SignupsOverview
+        {overview && (
+          <OverviewDialog
+            open={overviewOpen}
+            onClose={() => setOverviewOpen(false)}
+            title={event}
             overview={overview}
             capacity={sheet.capacity}
             columns={read.columns}
@@ -520,6 +451,58 @@ export function SignupsPage() {
                 </button>
               ))}
             </div>
+            <div className="signups-tools">
+              <button
+                type="button"
+                className="with-icon"
+                aria-haspopup="dialog"
+                onClick={() => setOverviewOpen(true)}
+                disabled={!overview}
+                title="Turnout, mentors, statuses, how people heard and group chats"
+              >
+                <ChartIcon /> Overview
+              </button>
+              <button
+                type="button"
+                className={`icon-button tool-button${editingMessage ? ' is-on' : ''}`}
+                aria-expanded={editingMessage}
+                aria-label="Message"
+                onClick={() => setEditingMessage((open) => !open)}
+                title="The message Text and Email start with"
+              >
+                <MessageIcon />
+              </button>
+              <button
+                type="button"
+                className={`icon-button tool-button${reading ? ' is-syncing' : ''}`}
+                onClick={() => readSheet(sheet, true)}
+                disabled={reading}
+                aria-busy={reading}
+                aria-label="Refresh"
+                title="Read the latest from Google Sheets"
+              >
+                <RefreshIcon />
+              </button>
+            </div>
+            {editingMessage && (
+              <div className="message-editor">
+                <label>
+                  <span>Message for Text and Email</span>
+                  <textarea rows={3} value={template} onChange={(e) => setTemplate(e.target.value)} />
+                </label>
+                <div className="message-editor-foot">
+                  <p className="muted">
+                    <code>{'{first}'}</code> is their nickname or first name, <code>{'{name}'}</code> their full name and{' '}
+                    <code>{'{event}'}</code> “{event}”. Kept on this device only.
+                  </p>
+                  {template !== DEFAULT_MESSAGE && (
+                    <button type="button" className="link-button" onClick={() => setTemplate(DEFAULT_MESSAGE)}>
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           {!read.columns.status && (
             <p className="signups-note">No Contact Status column found, so statuses can’t be changed here. Name a column “Contact Status” in the sheet.</p>
