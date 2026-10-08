@@ -419,7 +419,7 @@ export function SignupsPage() {
             )}
           </div>
           {tendError && (
-            <p className="signups-note">The sheet’s status columns and statistics couldn’t be updated: {tendError}</p>
+            <p className="signups-note">{tendError}</p>
           )}
           {!read.columns.status && (
             <p className="signups-note">No Contact Status column found, so statuses can’t be changed here. Name a column “Contact Status” in the sheet.</p>

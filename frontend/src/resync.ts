@@ -67,7 +67,11 @@ export function readTended(
         const tableError = await applyTending(config, sheet.spreadsheet_id, tab, plan)
         return { ...data, values: plan.values, database, ...(tableError && { tendError: tableError }) }
       } catch (err) {
-        return { ...data, database, tendError: errorMessage(err, 'Couldn’t update the sheet.') }
+        return {
+          ...data,
+          database,
+          tendError: `The sheet’s status columns and statistics couldn’t be updated: ${errorMessage(err, 'Google Sheets didn’t take the changes.')}`,
+        }
       }
     })
   tending.set(key, run)
