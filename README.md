@@ -26,7 +26,8 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   device), and move people who hadn't been contacted to *Awaiting response*. Both views list the
   same people from the same tab; Sign-ups is where contact status is tracked, and Check-in picks
   it up by itself.
-- **Overview** (on the Sign-ups page; hide it with its button, remembered per device) answers:
+- **Overview** (a button beside the Sign-ups page's search and filters; it opens in a large window
+  that closes with its X, Escape or a click outside it) answers:
   expected turnout (each sign-up times their status's show-up rate, plus walk-ins, the same
   numbers the tables are planned from), mentors to students per gender at that turnout, who's
   coming by gender and level, the contact status spread, how people heard about the event, and
