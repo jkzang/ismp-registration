@@ -2,9 +2,9 @@
  * Keeps the sheet's "[tab] - Check In" tab in step with the saved plan: check-ins, re-plans, seats
  * handed out at the door, people moved by hand, and other volunteers' changes as the page refreshes.
  *
- * Like attendance, writes go straight from this browser to Google, in the background, and only when
+ * Writes go straight from this browser to Google, in the background, and only when
  * what the tab shows has changed. It never opens Google's popup itself: without a token it waits
- * for one (the attendance chip's Connect, or the next click that signs in) and catches up then.
+ * for one (the header's Connect Google Sheets, or the next click that signs in) and catches up then.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { errorMessage } from './api'

@@ -137,7 +137,7 @@ function Reservation({ sheet, counts, released, now, onRelease }: {
   )
 }
 
-export function CheckInPanel({ sheet, plan, onChange, onReload, onAttendance, onSheetChange }: {
+export function CheckInPanel({ sheet, plan, onChange, onReload, onSheetChange }: {
   sheet: Sheet
   plan: SeatingPlan
   /** Saves a change to the sheet itself, like releasing the reserved spots. */
@@ -146,7 +146,6 @@ export function CheckInPanel({ sheet, plan, onChange, onReload, onAttendance, on
   /** Picks up the seat the server just handed out, for the tables board. */
   onReload: () => void
   /** Ticks or clears their box in the Google Sheet, in the background. */
-  onAttendance: (key: string, checkedIn: boolean) => void
 }) {
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -195,14 +194,12 @@ export function CheckInPanel({ sheet, plan, onChange, onReload, onAttendance, on
     const { student, table } = await api.checkIn(person.id, door)
     replace(student)
     setSeated({ id: person.id, name: person.name, table })
-    onAttendance(person.key, true)
     onReload()
   }
 
   async function doUndoCheckIn(person: PlanStudent) {
     replace((await api.undoCheckIn(person.id)).student)
     setSeated((current) => (current?.id === person.id ? null : current))
-    onAttendance(person.key, false)
     onReload()
   }
 

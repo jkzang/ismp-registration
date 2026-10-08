@@ -3579,3 +3579,272 @@ button.overview-action:hover {
   color: var(--text);
   background: var(--bg);
 }
+
+/* ---- A sheet's header, shared by Check-in and Sign-ups ----
+   The title with its two pages beside it on the left; on the right, the warnings, the event's
+   start and capacity as one box, and Re-sync, all one height. */
+.sheet-head {
+  align-items: center;
+  gap: 12px 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sheet-heading {
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+}
+
+.sheet-heading {
+  min-width: 260px;
+}
+
+.sheet-title {
+  min-width: 0;
+}
+
+/* The chips give way to the title before it's cut short. */
+.sheet-head-actions {
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.event-fields .start-field input {
+  width: 196px;
+}
+
+.sheet-views {
+  flex: none;
+  margin-top: 0;
+}
+
+.sheet-views a {
+  padding: 5px 12px;
+}
+
+.sheet-head-actions {
+  gap: 10px;
+}
+
+.sheet-head-actions > button {
+  height: 38px;
+}
+
+.event-fields {
+  display: flex;
+  align-items: stretch;
+  height: 38px;
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.event-fields .capacity-field {
+  gap: 6px;
+  padding: 0 4px 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.event-fields .capacity-field + .capacity-field {
+  border-left: 1px solid var(--border);
+}
+
+.event-fields .capacity-field input {
+  height: 100%;
+  padding: 0 8px 0 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+  background: transparent;
+}
+
+.event-fields .capacity-field input[type='number'] {
+  width: 56px;
+}
+
+.event-fields .capacity-field:focus-within {
+  background: var(--accent-soft);
+}
+
+.event-fields .capacity-field.has-error {
+  color: var(--error);
+}
+
+.resync-button {
+  border: 1px solid var(--input-border);
+  background: var(--bg);
+}
+
+.resync-button:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+/* ---- The Sign-ups toolbar ----
+   Search with Overview and Message, then the status tabs as an underlined row, then the filters. */
+.signups-page .signups-top {
+  gap: 12px;
+  padding: 2px 0 0;
+}
+
+.signups-top .checkin-search {
+  flex: 1 1 240px;
+  max-width: 420px;
+  height: 38px;
+}
+
+.signups-tools > button {
+  height: 38px;
+}
+
+.signups-tools > button.with-icon {
+  padding: 0 14px;
+  border: 1px solid var(--input-border);
+  background: var(--bg);
+}
+
+.signups-tools > button.with-icon:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.signups-tools .tool-button {
+  width: 38px;
+  border: 1px solid var(--input-border);
+  background: var(--bg);
+}
+
+.signups-groups {
+  flex: 1 1 100%;
+  display: flex;
+  gap: 4px;
+  padding: 0;
+  /* The rule under the tabs, drawn inside so scrolling doesn't clip the active tab's line. */
+  box-shadow: inset 0 -1px 0 var(--border);
+  flex-wrap: nowrap;
+  border-radius: 0;
+  background: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.signups-groups button {
+  flex: none;
+  gap: 7px;
+  padding: 8px 12px 10px;
+  border: none;
+  border-radius: 0;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-muted);
+  background: none;
+  box-shadow: none;
+}
+
+.signups-groups button:hover {
+  color: var(--text);
+  background: none;
+}
+
+.signups-groups button.is-on {
+  color: var(--accent);
+  background: none;
+  box-shadow: inset 0 -2px 0 var(--accent-fill);
+}
+
+.signups-groups button.is-on .tab-count {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.signups-filters {
+  gap: 8px 20px;
+}
+
+.signups-filter {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.signups-filter select {
+  height: 32px;
+  padding: 0 28px 0 10px;
+  border-color: transparent;
+  border-radius: 8px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  background-color: var(--btn);
+}
+
+.signups-filter .segmented {
+  padding: 2px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.signups-filter .segmented button {
+  padding: 4px 10px;
+}
+
+.signups-columns {
+  margin-top: 2px;
+}
+
+/* On a phone: the title over its page switch, then the event box, Re-sync and the tools. */
+@media (max-width: 900px) {
+  .sheet-head {
+    flex-wrap: wrap;
+  }
+
+  .sheet-heading {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+
+  .sheet-head-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+
+  .event-fields {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .event-fields .start-field {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .event-fields .start-field input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .event-fields .capacity-field span {
+    display: inline;
+  }
+
+  .signups-top .checkin-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+
+  .signups-tools {
+    margin-left: 0;
+  }
+}
