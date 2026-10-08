@@ -2864,3 +2864,336 @@ button .spinner {
     max-width: none;
   }
 }
+
+/* The Sign-ups page scrolls as a whole, so the overview can sit above the list. The search and
+   filters stay at the top. */
+.signups-page {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.signups-page .signups {
+  flex: none;
+}
+
+.signups-page .signups-top {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 4px 0 6px;
+  background: var(--bg);
+}
+
+.signups-page .signups-list {
+  overflow: visible;
+}
+
+.overview {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.overview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.overview-card h2 {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.overview-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.overview-number {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-note {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.overview-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.overview-flag svg {
+  width: 13px;
+  height: 13px;
+}
+
+.overview-flag.is-warn {
+  color: var(--warn-text);
+  background: var(--warn-soft);
+}
+
+.overview-flag.is-ok {
+  color: var(--ok-text);
+  background: var(--ok-soft);
+}
+
+.overview-equation {
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-equation td {
+  padding: 2px 0;
+  color: var(--text-muted);
+}
+
+.overview-equation td:nth-child(2) {
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.overview-equation td:last-child {
+  text-align: right;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.overview-ratios {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overview-ratios li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.overview-ratios .muted {
+  font-size: 13px;
+}
+
+.overview-ratio-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.overview-ratio-group {
+  font-weight: 700;
+}
+
+.overview-ratio {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-breakdown {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-breakdown th,
+.overview-breakdown td {
+  padding: 4px 6px;
+  text-align: right;
+  vertical-align: top;
+}
+
+.overview-breakdown thead th {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.overview-breakdown tbody th {
+  text-align: left;
+  font-weight: 700;
+}
+
+.overview-breakdown tbody tr + tr {
+  border-top: 1px solid var(--border);
+}
+
+.overview-breakdown td {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.overview-sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bar-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 132px) minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.bar-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-label .checkin-status {
+  display: inline-block;
+}
+
+.bar-track {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--hover-wash);
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent-fill);
+}
+
+.bar-value {
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+
+.overview-stats dt {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.overview-stats dd {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-track.is-progress .bar-fill {
+  background: var(--ok);
+}
+
+button.overview-action {
+  align-self: flex-start;
+  padding: 5px 12px;
+  color: var(--accent-contrast);
+  background: var(--accent-fill);
+}
+
+button.overview-action:hover {
+  background: var(--accent-fill-hover);
+}
+
+/* Group chat toggle on each sign-up: a fixed slot so the statuses line up. */
+.chat-slot {
+  display: flex;
+  justify-content: flex-end;
+  width: 118px;
+}
+
+button.chat-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--text-muted);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+button.chat-toggle svg {
+  width: 13px;
+  height: 13px;
+}
+
+button.chat-toggle.is-due {
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-fill);
+}
+
+button.chat-toggle.is-on {
+  color: var(--ok-text);
+  background: var(--ok-soft);
+  box-shadow: none;
+}
+
+@media (max-width: 900px) {
+  .chat-slot {
+    width: auto;
+    margin-right: auto;
+  }
+}
+
+@media (max-width: 900px) {
+  .signups-page .sheet-head {
+    flex-wrap: wrap;
+  }
+
+  .signups-page .sheet-head-actions {
+    width: 100%;
+  }
+
+  .signups-page .sheet-head-actions > button {
+    flex: 1;
+    width: auto;
+  }
+}

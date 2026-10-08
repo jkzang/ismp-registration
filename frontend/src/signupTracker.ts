@@ -1,6 +1,7 @@
 /**
- * The Sign-ups page's view of the sign-up tab: everyone with their contact status, phone and email,
- * read in the browser. Phone and email stay in this tab's memory and are never sent to the server.
+ * The Sign-ups page's view of the sign-up tab: everyone with their contact status, phone, email,
+ * social media IDs, how they heard about the event and whether they're in the group chats, read in
+ * the browser. None of those leave this tab's memory or reach the server.
  */
 import { parseSheet, statusOf, type ContactStatus, type FieldMap, type ParseResult, type SignupRow } from './sheetParser'
 import { CONTACT_STATUSES } from './types'
@@ -12,7 +13,47 @@ export type Contact = SignupRow & {
   email: string
   /** The timestamp cell as the sheet shows it. */
   signedUp: string
+  /** Social media IDs they gave, labeled by their column's header. */
+  socials: { label: string; id: string }[]
+  /** Said they'd like to join the group chats (or, without that question, gave an ID). */
+  wantsChat: boolean
+  /** Ticked in the "Added to Group Chat" column. */
+  chatAdded: boolean
+  /** How they heard about the event, as answered. */
+  referral: string
 }
+
+const words = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+// Found by header, like phone and email; none of these is ever imported.
+const CHAT_ADDED = /\badded\b.*\b(group|chats?)\b|\b(group|chats?)\b.*\badded\b/
+const JOIN_CHAT = /\b(join|want|like|interested)\b.*\b(group|chats?|community)\b|\bgroup ?chats?\b/
+const REFERRAL = /\b(hear|heard|find out|found out|learn about|learned about|referr\w*|referral)\b/
+const SOCIAL = /\b(wechat|we chat|instagram|insta|ig|line|whatsapp|kakao\w*|telegram|discord|facebook|messenger|snapchat|social)\b/
+
+/** Columns of the extra questions, by header. Used columns (name, phone and so on) are skipped. */
+export function extraColumns(headers: string[], used: Set<number>) {
+  const find = (pattern: RegExp, taken: Set<number>) => {
+    const index = headers.findIndex((h, i) => !taken.has(i) && pattern.test(words(h)))
+    return index === -1 ? undefined : index
+  }
+  const taken = new Set(used)
+  const chatAdded = find(CHAT_ADDED, taken)
+  if (chatAdded !== undefined) taken.add(chatAdded)
+  const referral = find(REFERRAL, taken)
+  if (referral !== undefined) taken.add(referral)
+  // An ID column's header can mention the group too ("WeChat ID (to add you to our group)"), so the
+  // join question is the one that isn't asking for an ID.
+  const joinChat = headers.findIndex((h, i) => !taken.has(i) && JOIN_CHAT.test(words(h)) && !/\b(id|username|handle)\b/.test(words(h)))
+  if (joinChat !== -1) taken.add(joinChat)
+  const social = headers.flatMap((h, i) => (!taken.has(i) && SOCIAL.test(words(h)) ? [i] : []))
+  return { chatAdded, referral, joinChat: joinChat === -1 ? undefined : joinChat, social }
+}
+
+const NO_ANSWER = /^(n ?a|none|no|nil|null|nope|-+|\.)?$/
+const YES = /^(y|yes|yeah|yep|sure|ok|okay|definitely|of course|absolutely)\b/
+/** A checkbox (or a typed yes) in the "Added to Group Chat" column. */
+export const isTicked = (text: string) => /^(true|yes|y|added|done|x|✓|✔)$/i.test(text.trim())
 
 /** The saved columns, but looking again for the ones only located (an import may predate them). */
 export function locateFieldMap(fieldMap: FieldMap): FieldMap {
@@ -29,14 +70,24 @@ const cellOf = (values: string[][], row: number, column: number | undefined) =>
 export function readContacts(values: string[][], fieldMap: FieldMap) {
   const parsed = parseSheet(values, { fieldMap: locateFieldMap(fieldMap) })
   const { columns } = parsed
+  const extra = extraColumns(parsed.headers, new Set(Object.values(columns)))
   const contacts: Contact[] = parsed.rows.map((row, i) => {
     const index = parsed.rowIndexes[i]
+    const socials = extra.social.flatMap((column) => {
+      const id = cellOf(values, index, column)
+      return NO_ANSWER.test(words(id)) ? [] : [{ label: parsed.headers[column], id }]
+    })
+    const join = words(cellOf(values, index, extra.joinChat))
     return {
       ...row,
       row: index,
       phone: cellOf(values, index, columns.phone),
       email: cellOf(values, index, columns.email),
       signedUp: cellOf(values, index, columns.timestamp),
+      socials,
+      wantsChat: extra.joinChat !== undefined ? YES.test(join) : socials.length > 0,
+      chatAdded: isTicked(cellOf(values, index, extra.chatAdded)),
+      referral: cellOf(values, index, extra.referral),
     }
   })
   return {
@@ -45,6 +96,10 @@ export function readContacts(values: string[][], fieldMap: FieldMap) {
       status: columns.status !== undefined,
       phone: columns.phone !== undefined,
       email: columns.email !== undefined,
+      chatAdded: extra.chatAdded !== undefined,
+      // Some way to tell who wants to join.
+      chat: extra.joinChat !== undefined || extra.social.length > 0,
+      referral: extra.referral !== undefined,
     },
   }
 }
@@ -105,3 +160,7 @@ export function shortTimestamp(text: string) {
   if (Number.isNaN(date.getTime())) return text
   return date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
+
+/** "WeChat ID" → "WeChat": the header, less the words that only say it's an ID. */
+export const socialLabel = (header: string) =>
+  header.replace(/\(.*?\)/g, '').replace(/\b(your|id|username|user name|handle|account)\b/gi, '').replace(/[?:]/g, '').replace(/\s+/g, ' ').trim() || header

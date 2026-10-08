@@ -1001,5 +1001,8 @@ def plan_payload(plan):
             for gender in (FEMALE, MALE) for level in (UNDERGRAD, GRAD)
         ],
         'show_up_rates': SHOW_UP_RATES,
+        # For the Sign-ups page's overview, which estimates turnout the same way.
+        'walk_in_rate': WALK_IN_RATE,
+        'ideal_per_mentor': IDEAL_PER_MENTOR,
         'updated_at': plan.updated_at,
     }

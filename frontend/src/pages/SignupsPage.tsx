@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { api, ApiError, errorMessage } from '../api'
 import { useApp } from '../appContext'
-import { CloseIcon, MailIcon, MessageIcon, PhoneIcon, RefreshIcon, SearchIcon } from '../components/icons'
+import { ChartIcon, CheckIcon, CloseIcon, MailIcon, MessageIcon, PhoneIcon, RefreshIcon, SearchIcon } from '../components/icons'
 import { SheetViews } from '../components/SheetViews'
+import { SignupsOverview } from '../components/SignupsOverview'
 import {
   getAccessToken,
   NeedsSignInError,
@@ -11,9 +12,11 @@ import {
   readTab,
   StatusChangedError,
   withSheetAccess,
+  writeChatAdded,
   writeStatus,
 } from '../google'
 import { readForSync, resyncSheet } from '../resync'
+import { overviewOf, type OverviewPlan } from '../signupOverview'
 import {
   BEFORE_CONTACT,
   DEFAULT_MESSAGE,
@@ -23,11 +26,12 @@ import {
   readContacts,
   shortTimestamp,
   smsHref,
+  socialLabel,
   STATUS_GROUPS,
   telHref,
   type Contact,
 } from '../signupTracker'
-import { CONTACT_STATUSES, sheetName, type ContactStatus, type PlanStudent, type Sheet } from '../types'
+import { CONTACT_STATUSES, sheetName, type ContactStatus, type PlanStudent, type SeatingPlan, type Sheet } from '../types'
 import { useUndo } from '../undo'
 
 // Other volunteers (and the form) change the sheet too; re-read it now and then, and on coming back to the tab.
@@ -37,6 +41,42 @@ const GENDER_LABELS = { female: 'Girl', male: 'Guy' } as const
 const LEVEL_LABELS = { undergrad: 'Undergrad', grad: 'Grad', other: 'Not a student' } as const
 
 type Read = ReturnType<typeof readContacts>
+
+// The filter for confirmed people who asked to join the group chats and aren't in them yet.
+const CHAT_GROUP = 'chat'
+
+/** Whether the overview is shown; remembered on this device. */
+function useOverviewShown() {
+  const key = 'signups-overview-hidden'
+  const [shown, setShown] = useState(() => {
+    try {
+      return localStorage.getItem(key) !== '1'
+    } catch {
+      return true
+    }
+  })
+  const toggle = useCallback(() => {
+    setShown((was) => {
+      try {
+        if (was) localStorage.setItem(key, '1')
+        else localStorage.removeItem(key)
+      } catch {
+        // Only a convenience; it just won't be remembered.
+      }
+      return !was
+    })
+  }, [])
+  return [shown, toggle] as const
+}
+
+type PlanInfo = Omit<OverviewPlan, 'students'>
+const planInfo = ({ mentors, excluded_mentor_ids, show_up_rates, walk_in_rate, ideal_per_mentor }: SeatingPlan): PlanInfo => ({
+  mentors,
+  excluded_mentor_ids,
+  show_up_rates,
+  walk_in_rate,
+  ideal_per_mentor,
+})
 
 /** The Text and Email message, kept per sheet in this browser only. */
 function useMessageTemplate(sheetId: number) {
@@ -66,8 +106,10 @@ function useMessageTemplate(sheetId: number) {
 
 /**
  * Everyone who signed up, newest first, for reaching out before the event: change their contact
- * status (written straight into the sheet's Contact Status column) and text, call or email them.
- * The sheet is read in this browser, so phone numbers and emails never reach the server.
+ * status (written straight into the sheet's Contact Status column), text, call or email them, and
+ * tick off who's been added to the group chats (the sheet's "Added to Group Chat" column). An
+ * overview above sums it all up. The sheet is read in this browser, so phone numbers, emails and
+ * social media IDs never reach the server.
  */
 export function SignupsPage() {
   const sheetId = Number(useParams().sheetId)
@@ -76,12 +118,15 @@ export function SignupsPage() {
   const navigate = useNavigate()
   const [sheet, setSheet] = useState<Sheet | null>(null)
   const [students, setStudents] = useState<PlanStudent[] | null>(null)
+  const [plan, setPlan] = useState<PlanInfo | null>(null)
   const [read, setRead] = useState<Read | null>(null)
   const [access, setAccess] = useState<'checking' | 'needs-access' | 'ok'>('checking')
   const [error, setError] = useState<string | null>(null)
   const [reading, setReading] = useState(false)
   // Statuses being written, shown right away.
   const [pending, setPending] = useState<Map<string, ContactStatus>>(new Map())
+  const [pendingChat, setPendingChat] = useState<Map<string, boolean>>(new Map())
+  const [overviewShown, toggleOverview] = useOverviewShown()
   const [group, setGroup] = useState('all')
   const [query, setQuery] = useState('')
   const [editingMessage, setEditingMessage] = useState(false)
@@ -106,12 +151,15 @@ export function SignupsPage() {
     setAccess('checking')
     setError(null)
     setPending(new Map())
+    setPendingChat(new Map())
+    setPlan(null)
     const refresh = () =>
       Promise.all([api.getSheet(sheetId), api.getPlan(sheetId)])
         .then(([s, p]) => {
           if (!active) return
           setSheet(s)
           setStudents(p.students)
+          setPlan(planInfo(p))
         })
         .catch((err) => {
           if (!active) return
@@ -147,7 +195,9 @@ export function SignupsPage() {
         })
         if (synced && sheetRef.current?.id === current.id) {
           setSheet(synced.result.sheet)
-          setStudents((await api.getPlan(current.id)).students)
+          const next = await api.getPlan(current.id)
+          setStudents(next.students)
+          setPlan(planInfo(next))
         }
       } catch (err) {
         if (err instanceof NeedsSignInError || err instanceof NoAccessError) setAccess('needs-access')
@@ -224,6 +274,52 @@ export function SignupsPage() {
 
   const statusOfContact = (contact: Contact) => pending.get(contact.key) ?? contact.status
 
+  /** Ticks or clears their "Added to Group Chat" box. With `expected` (undo and redo), only if it still shows that. */
+  const applyChat = useCallback(
+    async (key: string, added: boolean, expected?: boolean) => {
+      const current = sheetRef.current
+      if (!current) return
+      setPendingChat((p) => new Map(p).set(key, added))
+      writes.current.running++
+      const run = queue.current.then(async () => {
+        await writeChatAdded(config, current, key, added, expected)
+        setRead((r) => r && { ...r, contacts: r.contacts.map((c) => (c.key === key ? { ...c, chatAdded: added } : c)) })
+      })
+      queue.current = run.catch(() => {})
+      try {
+        await run
+      } finally {
+        writes.current.running--
+        writes.current.done++
+        setPendingChat((p) => {
+          if (p.get(key) !== added) return p
+          const next = new Map(p)
+          next.delete(key)
+          return next
+        })
+      }
+    },
+    [config],
+  )
+
+  const chatAddedOf = (contact: Contact) => pendingChat.get(contact.key) ?? contact.chatAdded
+
+  async function toggleChat(contact: Contact) {
+    const before = chatAddedOf(contact)
+    setError(null)
+    try {
+      await applyChat(contact.key, !before)
+      push({
+        label: `${contact.name}’s group chat box`,
+        undo: () => applyChat(contact.key, before, !before),
+        redo: () => applyChat(contact.key, !before, before),
+      })
+    } catch (err) {
+      if (err instanceof NeedsSignInError || err instanceof NoAccessError) setAccess('needs-access')
+      setError(errorMessage(err, 'Couldn’t update the group chat box.'))
+    }
+  }
+
   /** True once saved; undoable with Ctrl/Cmd+Z. */
   async function changeStatus(contact: Contact, status: ContactStatus) {
     const before = statusOfContact(contact)
@@ -271,6 +367,7 @@ export function SignupsPage() {
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheet.spreadsheet_id)}/edit#gid=${sheet.tab_id}`
   const contacts = read?.contacts ?? []
   const inGroup = (contact: Contact, value: string) => {
+    if (value === CHAT_GROUP) return statusOfContact(contact) === 'confirmed' && contact.wantsChat && !chatAddedOf(contact)
     const statuses = STATUS_GROUPS.find((g) => g.value === value)?.statuses
     return !statuses || statuses.includes(statusOfContact(contact))
   }
@@ -281,9 +378,19 @@ export function SignupsPage() {
     c.name.toLowerCase().includes(q) ||
     c.nickname.toLowerCase().includes(q) ||
     c.email.toLowerCase().includes(q) ||
+    c.socials.some((s) => s.id.toLowerCase().includes(q)) ||
     (qDigits.length >= 3 && c.phone.replace(/\D/g, '').includes(qDigits))
   // The form adds rows at the bottom, so the newest sign-ups come first.
   const shown = contacts.filter((c) => inGroup(c, group) && matches(c)).reverse()
+  const groups = [
+    ...STATUS_GROUPS,
+    ...(read?.columns.chat ? [{ value: CHAT_GROUP, label: 'Add to chats' }] : []),
+  ]
+  // With what's still being saved, so the numbers move as soon as something changes.
+  const overview =
+    read && plan && students
+      ? overviewOf(contacts.map((c) => ({ ...c, status: statusOfContact(c), chatAdded: chatAddedOf(c) })), { ...plan, students })
+      : null
 
   return (
     <div className="sheet-page signups-page">
@@ -302,6 +409,15 @@ export function SignupsPage() {
               Connect Google Sheets
             </button>
           )}
+          <button
+            type="button"
+            className="with-icon"
+            aria-expanded={overviewShown}
+            onClick={toggleOverview}
+            title={overviewShown ? 'Hide the overview' : 'Show the overview'}
+          >
+            <ChartIcon /> Overview
+          </button>
           <button
             type="button"
             className="with-icon"
@@ -366,6 +482,18 @@ export function SignupsPage() {
           </p>
         )
       ) : (
+        <>
+        {overviewShown && overview && (
+          <SignupsOverview
+            overview={overview}
+            capacity={sheet.capacity}
+            columns={read.columns}
+            onShowChatList={() => {
+              setQuery('')
+              setGroup(CHAT_GROUP)
+            }}
+          />
+        )}
         <section className="signups" aria-label="Sign-ups">
           <div className="signups-top">
             <label className="checkin-search">
@@ -375,11 +503,11 @@ export function SignupsPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search"
-                aria-label="Search by name, nickname, phone or email"
+                aria-label="Search by name, nickname, phone, email or social media ID"
               />
             </label>
             <div className="segmented signups-groups" role="tablist" aria-label="Contact status">
-              {STATUS_GROUPS.map((g) => (
+              {groups.map((g) => (
                 <button
                   key={g.value}
                   type="button"
@@ -402,11 +530,12 @@ export function SignupsPage() {
           <ul className="signups-list">
             {shown.map((c) => {
               const status = statusOfContact(c)
+              const chatAdded = chatAddedOf(c)
               const message = fillMessage(template, c, event)
               const phone = dialable(c.phone)
               const details = [c.gender && GENDER_LABELS[c.gender], c.level && LEVEL_LABELS[c.level]].filter(Boolean).join(' · ')
               return (
-                <li key={c.key} className={pending.has(c.key) ? 'is-saving' : ''}>
+                <li key={c.key} className={pending.has(c.key) || pendingChat.has(c.key) ? 'is-saving' : ''}>
                   <div className="signup-person">
                     <span className="checkin-name">
                       {c.name}
@@ -416,14 +545,41 @@ export function SignupsPage() {
                       {details && <span>{details}</span>}
                       {c.signedUp && <span title={c.signedUp}>Signed up {shortTimestamp(c.signedUp)}</span>}
                     </span>
-                    {(c.phone || c.email) && (
+                    {(c.phone || c.email || c.socials.length > 0) && (
                       <span className="signup-reach">
                         {c.phone && <span>{c.phone}</span>}
                         {c.email && <span>{c.email}</span>}
+                        {c.socials.map((s) => (
+                          <span key={s.label} title={s.label}>
+                            {socialLabel(s.label)}: {s.id}
+                          </span>
+                        ))}
                       </span>
                     )}
                   </div>
                   <div className="signup-controls">
+                    <span className="chat-slot">
+                      {(c.wantsChat || chatAdded) && (
+                        <button
+                          type="button"
+                          className={`chat-toggle${chatAdded ? ' is-on' : status === 'confirmed' ? ' is-due' : ''}`}
+                          aria-pressed={chatAdded}
+                          disabled={!read.columns.chatAdded || pendingChat.has(c.key)}
+                          onClick={() => toggleChat(c)}
+                          title={
+                            !read.columns.chatAdded
+                              ? 'Add a checkbox column named “Added to Group Chat” to the sheet'
+                              : chatAdded
+                                ? 'In the group chats. Click to clear.'
+                                : status === 'confirmed'
+                                  ? 'Confirmed and asked to join the group chats. Click once they’re added.'
+                                  : 'Asked to join the group chats. Add them once they confirm.'
+                          }
+                        >
+                          {chatAdded && <CheckIcon />} {chatAdded ? 'In chats' : 'Add to chats'}
+                        </button>
+                      )}
+                    </span>
                     <select
                       className={`status-select status-${status}`}
                       value={status}
@@ -467,6 +623,7 @@ export function SignupsPage() {
             {shown.length === 0 && <li className="checkin-empty">{contacts.length > 0 ? 'No matches' : 'No sign-ups'}</li>}
           </ul>
         </section>
+        </>
       )}
     </div>
   )

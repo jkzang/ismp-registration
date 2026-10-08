@@ -35,6 +35,8 @@ const plan: SeatingPlan = {
   mentors: [{ id: 1, name: 'Grace Lee', gender: 'female' }],
   expected: [],
   show_up_rates: {},
+  walk_in_rate: 0.15,
+  ideal_per_mentor: 3,
   updated_at: '',
 }
 

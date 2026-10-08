@@ -26,6 +26,17 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   device), and move people who hadn't been contacted to *Awaiting response*. Both views list the
   same people from the same tab; Sign-ups is where contact status is tracked, and Check-in picks
   it up by itself.
+- **Overview** (on the Sign-ups page; hide it with its button, remembered per device) answers:
+  expected turnout (each sign-up times their status's show-up rate, plus walk-ins, the same
+  numbers the tables are planned from), mentors to students per gender at that turnout, who's
+  coming by gender and level, the contact status spread, how people heard about the event, and
+  the group chats.
+- **Group chats** are tracked in their own sheet column, apart from contact status: add a checkbox
+  column named **Added to Group Chat**. People who answered yes to a "join our group chats"
+  question (or, without one, gave a WeChat/Instagram/LINE/etc. ID) get an *Add to chats* button
+  that ticks it; the **Add to chats** filter lists the confirmed ones not added yet. A "How did you
+  hear about this event?" question feeds the overview. Like phone numbers, social media IDs and
+  these answers stay in the browser.
 - Several volunteers can use a sheet at once. Each device asks the server for a sync ticket before
   reading the tab, and the server turns away a re-sync from a read older than the last one it
   took, so a slow device can't undo newer changes. Undo and redo on the Sign-ups page only change

@@ -124,6 +124,10 @@ export type SeatingPlan = {
   /** `tables_wanted` is how many tables that turnout calls for, before the limit of one per mentor. */
   expected: { gender: Gender; level: TableLevel; count: number; tables_wanted: number }[]
   show_up_rates: Partial<Record<ContactStatus, number>>
+  /** Walk-ins, as a share of the expected turnout from sign-ups. */
+  walk_in_rate: number
+  /** Students per mentor that a table is planned to. */
+  ideal_per_mentor: number
   updated_at: string
 }
 

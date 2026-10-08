@@ -204,3 +204,11 @@ export function MailIcon() {
     </svg>
   )
 }
+
+export function ChartIcon() {
+  return (
+    <svg {...base}>
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+    </svg>
+  )
+}

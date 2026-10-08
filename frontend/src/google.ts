@@ -7,7 +7,7 @@
  */
 import { checkInTabTitle, type CheckInLayout } from './checkInTab'
 import { parseSheet, type ContactStatus, type FieldMap } from './sheetParser'
-import { locateFieldMap, statusText } from './signupTracker'
+import { extraColumns, isTicked, locateFieldMap, statusText } from './signupTracker'
 import { isDatabaseTab } from './studentDatabase'
 import { CONTACT_STATUSES, type AppConfig } from './types'
 
@@ -323,6 +323,44 @@ export async function writeStatus(
   await writeCells(config, sheet.spreadsheet_id, tabTitle, [
     { row: parsed.rowIndexes[i], column, text: statusText(values, parsed, status) },
   ])
+}
+
+export class NoChatColumnError extends Error {}
+
+/**
+ * Ticks or clears one sign-up's "Added to Group Chat" box (`key` is their row's key), finding their
+ * row again like writeStatus. With `expected` (undo and redo), only if the box still shows that.
+ */
+export async function writeChatAdded(
+  config: AppConfig,
+  sheet: { spreadsheet_id: string; tab_id: number; field_map: FieldMap },
+  key: string,
+  added: boolean,
+  expected?: boolean,
+) {
+  const { tabTitle, values } = await readTab(config, sheet.spreadsheet_id, sheet.tab_id)
+  const parsed = parseSheet(values, { fieldMap: locateFieldMap(sheet.field_map) })
+  const column = extraColumns(parsed.headers, new Set(Object.values(parsed.columns))).chatAdded
+  if (column === undefined) {
+    throw new NoChatColumnError('No group chat column found. Add a checkbox column named “Added to Group Chat” to the sheet.')
+  }
+  const i = parsed.rows.findIndex((row) => row.key === key)
+  if (i === -1) throw new Error('That sign-up is no longer in the sheet, or their name or timestamp changed. Refresh and try again.')
+  const row = parsed.rowIndexes[i]
+  const now = isTicked(values[row]?.[column] ?? '')
+  if (expected !== undefined && now !== expected && now !== added) {
+    throw new Error(`Someone else ${now ? 'ticked' : 'cleared'} ${parsed.rows[i].name}’s group chat box since, so it was left as is.`)
+  }
+  const tab = `'${tabTitle.replace(/'/g, "''")}'`
+  try {
+    await sheetsFetch(config, `${encodeURIComponent(sheet.spreadsheet_id)}/values:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({ valueInputOption: 'RAW', data: [{ range: `${tab}!${columnLetter(column)}${row + 1}`, values: [[added]] }] }),
+    })
+  } catch (err) {
+    if (err instanceof NoAccessError) throw new Error('You can view this spreadsheet but not edit it. Ask its owner for edit access.')
+    throw err
+  }
 }
 
 type TabProperties = { sheetId: number; title: string; index: number }

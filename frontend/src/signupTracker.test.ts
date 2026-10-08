@@ -11,7 +11,7 @@ const values = [
 describe('readContacts', () => {
   it('keeps phone, email and the timestamp, and finds columns an older import saved as none', () => {
     const { contacts, columns } = readContacts(values, { name: 'First & Last Name', phone: '', email: '', status: '' })
-    expect(columns).toEqual({ status: true, phone: true, email: true })
+    expect(columns).toMatchObject({ status: true, phone: true, email: true })
     expect(contacts.map((c) => [c.name, c.row, c.phone, c.email, c.signedUp, c.status])).toEqual([
       ['Amy Lin', 1, '(858) 555-0100', 'amy@ucsd.edu', '10/1/2026 9:00:00', 'awaiting_response'],
       ['Ben Wu', 2, '+1 858 555 0101', '', '10/2/2026 9:00:00', 'not_contacted'],
