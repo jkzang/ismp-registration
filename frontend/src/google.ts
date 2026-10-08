@@ -520,6 +520,21 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
   for (const { column, options } of tending.dropdowns) {
     const range = { sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: column, endColumnIndex: column + 1 }
     requests.push({
+      // Centered, with a white edge, so each colored status sits in its cell like a chip.
+      repeatCell: {
+        range,
+        cell: {
+          userEnteredFormat: {
+            horizontalAlignment: 'CENTER',
+            verticalAlignment: 'MIDDLE',
+            wrapStrategy: 'CLIP',
+            borders: { top: CHIP_EDGE, bottom: CHIP_EDGE, left: CHIP_EDGE, right: CHIP_EDGE },
+          },
+        },
+        fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy,borders)',
+      },
+    })
+    requests.push({
       setDataValidation: {
         range,
         rule: {
@@ -562,7 +577,9 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
           range: { sheetId, startRowIndex: 0, endRowIndex: STATS_ROWS, startColumnIndex: 0, endColumnIndex: width },
           rows: tending.stats.map((row, r) => ({
             // The title bar runs the whole width.
-            values: Array.from({ length: r === 0 ? width : row.length }, (_, c) => statCell(row[c] ?? { text: '', style: 'heading' })),
+            values: Array.from({ length: r === 0 ? width : row.length }, (_, c) =>
+              r === 0 ? statCell(row[c] ?? { text: '', style: 'heading' }, c) : chipCell(row[c] ?? { text: '' }, c),
+            ),
           })),
           fields: 'userEnteredValue,userEnteredFormat',
         },
@@ -585,32 +602,52 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
   }
 }
 
-// Title, headline numbers and their labels, the six detail lines, and the gap before the header.
-const STATS_ROW_HEIGHTS = [34, 38, 22, 26, 26, 26, 26, 26, 26, 12]
+// The title, the gap, the tables' names, their nine rows, and the empty row before the header.
+const STATS_ROW_HEIGHTS = [34, 10, 28, ...Array<number>(9).fill(24), 21]
 const INK = { red: 0.2, green: 0.25, blue: 0.33 }
-const SEPARATOR = { style: 'SOLID_MEDIUM', color: { red: 1, green: 1, blue: 1 } }
+const MUTED = { red: 0.39, green: 0.45, blue: 0.55 }
+const WHITE = { red: 1, green: 1, blue: 1 }
+const RULE = { style: 'SOLID', color: { red: 0.89, green: 0.91, blue: 0.94 } }
+const FRAME = { style: 'SOLID', color: { red: 0.8, green: 0.84, blue: 0.88 } }
+/** A thick white edge around a colored cell, so it reads as a chip. */
+const CHIP_EDGE = { style: 'SOLID_THICK', color: WHITE }
 
-/** One cell of the stats block, as Sheets' CellData. */
-function statCell({ text, style, swatch }: StatCell) {
+/** One cell of the stats block, as Sheets' CellData. Each table is boxed, with a rule under each row. */
+function statCell({ text, style, last }: StatCell, column: number) {
+  const inTable = style === 'head' || style === 'name' || style === 'value'
+  // Tables are two columns wide, starting at A.
+  const side = column % 2 === 0 ? 'left' : 'right'
   const background =
-    style === 'heading' ? { red: 0.12, green: 0.16, blue: 0.23 } : style === 'label' ? { red: 0.95, green: 0.96, blue: 0.97 } : swatch?.background
-  const color = style === 'heading' ? { red: 1, green: 1, blue: 1 } : swatch?.text ?? INK
-  const centered = style === 'big' || style === 'small'
+    style === 'heading' ? { red: 0.12, green: 0.16, blue: 0.23 } : style === 'head' ? { red: 0.2, green: 0.25, blue: 0.33 } : undefined
   return {
     ...(text && { userEnteredValue: { stringValue: text } }),
     userEnteredFormat: {
-      verticalAlignment: style === 'big' ? 'BOTTOM' : style === 'small' ? 'TOP' : 'MIDDLE',
-      horizontalAlignment: centered ? 'CENTER' : 'LEFT',
-      wrapStrategy: style === 'heading' ? 'OVERFLOW_CELL' : 'CLIP',
+      verticalAlignment: 'MIDDLE',
+      horizontalAlignment: style === 'value' ? 'RIGHT' : 'LEFT',
+      wrapStrategy: style === 'heading' || style === 'head' ? 'OVERFLOW_CELL' : 'CLIP',
       padding: { left: 8, right: 8 },
       ...(background && { backgroundColor: background }),
-      // A white line between colored cells, so each reads as its own tile.
-      ...(swatch && { borders: { left: SEPARATOR, right: SEPARATOR } }),
+      ...(inTable && { borders: { [side]: FRAME, bottom: last || style === 'head' ? FRAME : RULE } }),
       textFormat: {
-        foregroundColor: color,
-        bold: style !== 'small' && (style !== undefined || !!swatch),
-        fontSize: style === 'heading' ? 13 : style === 'big' ? 18 : style === 'small' ? 9 : 10,
+        foregroundColor: style === 'heading' || style === 'head' ? WHITE : style === 'value' ? INK : MUTED,
+        bold: style !== 'name',
+        fontSize: style === 'heading' ? 13 : 10,
       },
+    },
+  }
+}
+
+/** A name colored like its status, as a chip inside its cell. */
+function chipCell(cell: StatCell, column: number) {
+  const base = statCell(cell, column)
+  if (!cell.swatch) return base
+  return {
+    ...base,
+    userEnteredFormat: {
+      ...base.userEnteredFormat,
+      backgroundColor: cell.swatch.background,
+      borders: { left: FRAME, top: CHIP_EDGE, bottom: cell.last ? FRAME : CHIP_EDGE, right: CHIP_EDGE },
+      textFormat: { ...base.userEnteredFormat.textFormat, foregroundColor: cell.swatch.text, bold: true },
     },
   }
 }

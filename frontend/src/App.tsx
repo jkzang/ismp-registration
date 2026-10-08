@@ -11,6 +11,7 @@ import { ChapterPage } from './pages/ChapterPage'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
 import { MentorsPage } from './pages/MentorsPage'
+import { SheetLayout } from './pages/SheetLayout'
 import { SheetPage } from './pages/SheetPage'
 import { SignupsPage } from './pages/SignupsPage'
 import { UndoProvider } from './undo'
@@ -132,8 +133,11 @@ export default function App() {
           <main className="app">
             <Routes>
               <Route path="/" element={<HomePage onAddSheet={startImport} />} />
-              <Route path="/sheets/:sheetId" element={<SheetPage />} />
-              <Route path="/sheets/:sheetId/signups" element={<SignupsPage />} />
+              {/* One layout for both of a sheet's pages, so switching between them keeps its header and what's loaded. */}
+              <Route path="/sheets/:sheetId" element={<SheetLayout />}>
+                <Route index element={<SheetPage />} />
+                <Route path="signups" element={<SignupsPage />} />
+              </Route>
               <Route path="/mentors" element={<MentorsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

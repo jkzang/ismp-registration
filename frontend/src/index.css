@@ -846,6 +846,15 @@ a {
   gap: 14px;
 }
 
+/* Under the header: the check-in page or the Sign-ups page. */
+.sheet-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .sheet-head {
   display: flex;
   align-items: center;
@@ -2295,8 +2304,8 @@ button .spinner {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .sheet-page.shows-checkin .dg,
-  .sheet-page.shows-tables .checkin {
+  .sheet-view.shows-checkin .dg,
+  .sheet-view.shows-tables .checkin {
     display: none;
   }
 
@@ -3139,22 +3148,7 @@ button.overview-action:hover {
   background: var(--accent-fill-hover);
 }
 
-@media (max-width: 900px) {
-  .signups-page .sheet-head {
-    flex-wrap: wrap;
-  }
-
-  .signups-page .sheet-head-actions {
-    width: 100%;
-  }
-
-  .signups-page .sheet-head-actions > button {
-    flex: 1;
-    width: auto;
-  }
-}
-
-/* Overview, Message and Refresh, at the end of the frozen search and filter row. */
+/* Overview and Message, at the end of the frozen search and filter row. */
 .signups-tools {
   display: flex;
   align-items: center;
