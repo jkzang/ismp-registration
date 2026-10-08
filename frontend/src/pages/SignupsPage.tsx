@@ -1,23 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
-import { api, ApiError, errorMessage } from '../api'
+import { api, errorMessage } from '../api'
 import { useApp } from '../appContext'
-import { ChartIcon, CloseIcon, MailIcon, MessageIcon, PhoneIcon, RefreshIcon, SearchIcon } from '../components/icons'
+import { ChartIcon, MailIcon, MessageIcon, PhoneIcon, SearchIcon } from '../components/icons'
 import { Segmented } from '../components/Segmented'
 import { DetailChips, SignupPersonDialog } from '../components/SignupPersonDialog'
-import { SheetViews } from '../components/SheetViews'
 import { OverviewDialog } from '../components/SignupsOverview'
-import {
-  getAccessToken,
-  NeedsSignInError,
-  NoAccessError,
-  readTab,
-  StatusChangedError,
-  withSheetAccess,
-  writeGroupChat,
-  writeStatus,
-} from '../google'
-import { readForSync, resyncSheet } from '../resync'
+import { StatusChangedError, writeGroupChat, writeStatus } from '../google'
+import { useSheet } from '../sheetContext'
 import { CHAT_STAGES, chatStageOf, GROUP_CHAT_STATUSES, groupChatLabel, needsChat, type GroupChatStatus } from '../signupColumns'
 import { overviewOf, type OverviewPlan } from '../signupOverview'
 import {
@@ -26,7 +15,6 @@ import {
   dialable,
   fillMessage,
   mailtoHref,
-  readContacts,
   SIGNED_UP_RANGES,
   signedUpParts,
   signedUpWithin,
@@ -35,11 +23,8 @@ import {
   telHref,
   type Contact,
 } from '../signupTracker'
-import { CONTACT_STATUSES, sheetName, type ContactStatus, type PlanStudent, type SeatingPlan, type Sheet } from '../types'
+import { CONTACT_STATUSES, sheetName, type ContactStatus, type SeatingPlan } from '../types'
 import { useUndo } from '../undo'
-
-// Other volunteers (and the form) change the sheet too; re-read it now and then, and on coming back to the tab.
-const REFRESH_MS = 30_000
 
 const GENDER_FILTERS = [
   { value: 'all', label: 'All' },
@@ -54,8 +39,6 @@ const LEVEL_FILTERS = [
 ] as const
 type GenderFilter = (typeof GENDER_FILTERS)[number]['value']
 type LevelFilter = (typeof LEVEL_FILTERS)[number]['value']
-
-type Read = ReturnType<typeof readContacts>
 
 // The filter for confirmed people who asked to join the group chats and aren't in them yet (To Do or Pending).
 const CHAT_GROUP = 'chat'
@@ -103,22 +86,15 @@ function useMessageTemplate(sheetId: number) {
  * social media IDs never reach the server.
  */
 export function SignupsPage() {
-  const sheetId = Number(useParams().sheetId)
   const { config } = useApp()
   const { push, notify } = useUndo()
-  const navigate = useNavigate()
-  const [sheet, setSheet] = useState<Sheet | null>(null)
-  const [students, setStudents] = useState<PlanStudent[] | null>(null)
-  const [plan, setPlan] = useState<PlanInfo | null>(null)
-  const [read, setRead] = useState<Read | null>(null)
-  const [access, setAccess] = useState<'checking' | 'needs-access' | 'ok'>('checking')
-  const [error, setError] = useState<string | null>(null)
-  const [reading, setReading] = useState(false)
+  const { sheet, plan: fullPlan, setPlan: setFullPlan, read, setRead, access, tendError, readSheet, queue, writes, setError } = useSheet()
+  const sheetId = sheet.id
+  const students = fullPlan.students
+  const plan = planInfo(fullPlan)
   // Statuses being written, shown right away.
   const [pending, setPending] = useState<Map<string, ContactStatus>>(new Map())
   const [pendingChat, setPendingChat] = useState<Map<string, GroupChatStatus>>(new Map())
-  // Why the sheet's status columns couldn't be added or filled in, e.g. it's view-only.
-  const [tendError, setTendError] = useState<string | null>(null)
   const [overviewOpen, setOverviewOpen] = useState(false)
   // The person view; by key, so it shows their latest row.
   const [openKey, setOpenKey] = useState<string | null>(null)
@@ -132,96 +108,9 @@ export function SignupsPage() {
 
   const sheetRef = useRef(sheet)
   sheetRef.current = sheet
-  const studentByKey = useMemo(() => new Map((students ?? []).map((s) => [s.key, s])), [students])
-  const studentsRef = useRef(students)
-  studentsRef.current = students
+  const studentByKey = useMemo(() => new Map(students.map((s) => [s.key, s])), [students])
   const studentByKeyRef = useRef(studentByKey)
   studentByKeyRef.current = studentByKey
-  // Status writes go out one at a time. A read that overlaps one may predate it, so it's dropped.
-  const queue = useRef<Promise<unknown>>(Promise.resolve())
-  const writes = useRef({ running: 0, done: 0 })
-
-  useEffect(() => {
-    let active = true
-    setSheet(null)
-    setStudents(null)
-    setRead(null)
-    setAccess('checking')
-    setError(null)
-    setPending(new Map())
-    setPendingChat(new Map())
-    setPlan(null)
-    const refresh = () =>
-      Promise.all([api.getSheet(sheetId), api.getPlan(sheetId)])
-        .then(([s, p]) => {
-          if (!active) return
-          setSheet(s)
-          setStudents(p.students)
-          setPlan(planInfo(p))
-        })
-        .catch((err) => {
-          if (!active) return
-          if (err instanceof ApiError && err.status === 404) navigate('/', { replace: true })
-          else setError(errorMessage(err, 'Couldn’t load this sheet.'))
-        })
-    refresh()
-    const timer = setInterval(refresh, REFRESH_MS)
-    return () => {
-      active = false
-      clearInterval(timer)
-    }
-  }, [sheetId, navigate])
-
-  /** With `interactive`, from a click: may open Google's sign-in and the Picker. */
-  const readSheet = useCallback(
-    async (current: Sheet, interactive: boolean) => {
-      const before = writes.current.done
-      setReading(true)
-      try {
-        const run = () => readTab(config, current.spreadsheet_id, current.tab_id)
-        if (!interactive) await getAccessToken(config, { interactive: false })
-        const data = await readForSync(config, current, interactive ? () => withSheetAccess(config, current.spreadsheet_id, run) : run)
-        if (!data) return
-        if (sheetRef.current?.id !== current.id) return
-        if (writes.current.running || writes.current.done !== before) return
-        setRead(readContacts(data.values, current.field_map))
-        setTendError(data.tendError ?? null)
-        setAccess('ok')
-        // New rows and statuses changed in the sheet go on to check-in.
-        const synced = await resyncSheet(config, current, data, {
-          auto: true,
-          knownKeys: studentsRef.current?.map((s) => s.key),
-        })
-        if (synced && sheetRef.current?.id === current.id) {
-          setSheet(synced.result.sheet)
-          const next = await api.getPlan(current.id)
-          setStudents(next.students)
-          setPlan(planInfo(next))
-        }
-      } catch (err) {
-        if (err instanceof NeedsSignInError || err instanceof NoAccessError) setAccess('needs-access')
-        else setError(errorMessage(err, 'Couldn’t read the sheet.'))
-      } finally {
-        setReading(false)
-      }
-    },
-    [config],
-  )
-
-  const loadedId = sheet?.id
-  useEffect(() => {
-    if (loadedId === undefined) return
-    const refresh = () => {
-      if (document.visibilityState === 'visible' && sheetRef.current) readSheet(sheetRef.current, false)
-    }
-    refresh()
-    const timer = setInterval(refresh, REFRESH_MS)
-    window.addEventListener('focus', refresh)
-    return () => {
-      clearInterval(timer)
-      window.removeEventListener('focus', refresh)
-    }
-  }, [loadedId, readSheet])
 
   /**
    * Writes the status into the sheet, then into the app if they're in it yet. Throws when the sheet
@@ -249,7 +138,7 @@ export function SignupsPage() {
         if (!student) return
         try {
           const { student: saved } = await api.setStatus(student.id, status)
-          setStudents((list) => list && list.map((s) => (s.id === saved.id ? saved : s)))
+          setFullPlan((p) => p && { ...p, students: p.students.map((s) => (s.id === saved.id ? saved : s)) })
         } catch {
           setError('The status was saved in the sheet; check-in will pick it up within a minute.')
         }
@@ -268,7 +157,7 @@ export function SignupsPage() {
         })
       }
     },
-    [config],
+    [config, queue, writes, setRead, setFullPlan, setError],
   )
 
   const statusOfContact = (contact: Contact) => pending.get(contact.key) ?? contact.status
@@ -298,7 +187,7 @@ export function SignupsPage() {
         })
       }
     },
-    [config],
+    [config, queue, writes, setRead],
   )
 
   const groupChatOf = (contact: Contact) => pendingChat.get(contact.key) ?? contact.groupChat
@@ -316,7 +205,6 @@ export function SignupsPage() {
         redo: () => applyChat(contact.key, status, before ?? 'not_invited'),
       })
     } catch (err) {
-      if (err instanceof NeedsSignInError || err instanceof NoAccessError) setAccess('needs-access')
       setError(errorMessage(err, 'Couldn’t change the group chat status.'))
     }
   }
@@ -336,7 +224,6 @@ export function SignupsPage() {
       })
       return true
     } catch (err) {
-      if (err instanceof NeedsSignInError || err instanceof NoAccessError) setAccess('needs-access')
       setError(errorMessage(err, 'Couldn’t change the status.'))
       return false
     }
@@ -350,22 +237,9 @@ export function SignupsPage() {
     })
   }
 
-  async function connect() {
-    if (!sheet) return
-    setError(null)
-    await readSheet(sheet, true)
-  }
-
-  if (!sheet) {
-    return error ? <p className="error">{error}</p> : (
-      <p className="muted loading-line" role="status">
-        <span className="spinner" aria-hidden="true" /> Loading the sign-ups…
-      </p>
-    )
-  }
+  const connect = () => readSheet(true)
 
   const event = sheetName(sheet)
-  const sheetUrl = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheet.spreadsheet_id)}/edit#gid=${sheet.tab_id}`
   const contacts = read?.contacts ?? []
   const inGroup = (contact: Contact, value: string) => {
     if (value === CHAT_GROUP) return statusOfContact(contact) === 'confirmed' && contact.wantsChat && needsChat(groupChatOf(contact))
@@ -401,38 +275,12 @@ export function SignupsPage() {
   ]
   // With what's still being saved, so the numbers move as soon as something changes.
   const overview =
-    read && plan && students
+    read
       ? overviewOf(contacts.map((c) => ({ ...c, status: statusOfContact(c), groupChat: groupChatOf(c) })), { ...plan, students })
       : null
 
   return (
-    <div className="sheet-page signups-page">
-      <header className="sheet-head">
-        <div className="sheet-heading">
-          <h1 className="sheet-title">
-            <a href={sheetUrl} target="_blank" rel="noreferrer" title={`Open “${sheet.tab_title}” in ${sheet.spreadsheet_title}`}>
-              {event}
-            </a>
-          </h1>
-          <SheetViews sheetId={sheet.id} />
-        </div>
-        <div className="sheet-head-actions">
-          {access === 'needs-access' && read && (
-            <button type="button" className="attendance-chip is-alert" onClick={connect} title="This device can’t reach the sheet right now">
-              Connect Google Sheets
-            </button>
-          )}
-        </div>
-      </header>
-      {error && (
-        <p className="error sheet-message" role="alert">
-          {error}
-          <button type="button" className="chip-icon" aria-label="Dismiss" onClick={() => setError(null)}>
-            <CloseIcon />
-          </button>
-        </p>
-      )}
-
+    <div className="sheet-view signups-page">
       {!read ? (
         access === 'needs-access' ? (
           <div className="empty-state">
@@ -523,17 +371,6 @@ export function SignupsPage() {
                 title="The message Text and Email start with"
               >
                 <MessageIcon />
-              </button>
-              <button
-                type="button"
-                className={`icon-button tool-button${reading ? ' is-syncing' : ''}`}
-                onClick={() => readSheet(sheet, true)}
-                disabled={reading}
-                aria-busy={reading}
-                aria-label="Refresh"
-                title="Read the latest from Google Sheets"
-              >
-                <RefreshIcon />
               </button>
             </div>
             <div className="signups-filters">

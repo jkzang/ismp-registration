@@ -9,10 +9,13 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
 - **Add sign up sheet** opens Google's file picker. Pick the spreadsheet, then the tab, check the
   column mapping, and import. The same tab can be imported more than once.
 - Each sheet page has the check-in list and the table board side by side, and a manual capacity.
-  New rows and status changes in the sheet come in by themselves: both of a sheet's pages read
-  the sign-up tab every 30 seconds (and when you come back to the browser tab) and send any
-  change to the app, never on their own dropping more than half the sign-ups (a half-edited
-  sheet, more likely). **Re-sync** pulls them right away (check-ins are kept).
+  The sheet is the source of truth: its name, **Start**, **Capacity** and **Re-sync** sit in a
+  header shared by its Check-in and Sign-ups pages, which stays put (with everything loaded) when
+  switching between them. The sign-up tab is read every 30 seconds while either page is open (and
+  when you come back to the browser tab), and any change goes to both pages and to check-in, never
+  on its own dropping more than half the sign-ups (a half-edited sheet, more likely). Switching
+  pages doesn't read it again; **Re-sync** reads it right away (check-ins are kept). What a sheet's
+  pages last had is kept while the app is open, so going back to a sheet shows it at once.
 - Importing a tab also adds a **[tab] - Check In** tab right after it in the spreadsheet: everyone
   signed up with whether they've checked in and their table, and the tables with their mentors.
   The sheet's page rewrites it whenever check-ins or the tables change (re-plans, seats handed out
@@ -37,7 +40,10 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   fills blank cells, so anything typed in the sheet stays:
   - Puts **Contact Status**, **New or Returning** and **Group Chat Status** in columns A, B and C
     (adding them, or moving them there from wherever they were), and **Contacted At** after the
-    last column, as dropdowns colored like the app.
+    last column, as dropdowns colored like the app, each status centered with a white edge so it
+    sits in its cell like a chip. (The Sheets API can't choose the dropdown's display style; to get
+    Google's own chips, select columns A–C, open Data → Data validation, and set each rule's
+    Advanced options → Display style to *Chip*. The app leaves that alone afterwards.)
   - Fills blank Contact Status with *Not Contacted*.
   - Fills New or Returning by looking each person up in the spreadsheet's **Student Database** tab
     (by phone, then email, then name): found is *Returning*, otherwise *New*. Without that tab it's
@@ -52,11 +58,10 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   - Moving someone to *Awaiting response* from the Sign-ups page stamps Contacted At (someone set to
     it in the sheet is stamped the next time it's read); 48 hours later they're moved to
     *No Response*.
-  - Keeps a **Sign-up statistics** block in ten rows above the header, frozen with it and rewritten
-    when the numbers change: a row of colored headline tiles (signed up, confirmed, awaiting
-    response, not contacted yet, no response, not coming, new, returning, to add to chats), then
-    gender and level, new vs returning (and among the confirmed), every contact status, group chat
-    stages and statuses, and when people signed up, with percentages.
+  - Keeps a **Sign-up statistics** block above the header, frozen with it and rewritten when the
+    numbers change: a title bar, then six boxed tables side by side, two columns each (Overview,
+    Contact status, Group chats, Gender & level, New vs returning, and when people signed up),
+    with counts and percentages, and an empty row between them and the sheet's header.
 
   None of these columns are sent to the server. The Sign-ups page sets Group Chat Status from a
   dropdown on each row, and the **Add to chats** filter lists the confirmed people who asked to be

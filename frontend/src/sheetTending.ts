@@ -18,8 +18,6 @@
  */
 import { parseSheet, type FieldMap, type ParseResult } from './sheetParser'
 import {
-  CHAT_STAGES,
-  chatStageOf,
   COLUMN_HEADERS,
   formatStamp,
   GROUP_CHAT_STATUSES,
@@ -42,17 +40,25 @@ import { databaseMatcher } from './studentDatabase'
 import { CONTACT_STATUSES, type ContactStatus } from './types'
 
 export const STATS_TITLE = 'Sign-up statistics'
-/** The title, the headline numbers and their labels, six lines of detail, and a blank line before the header. */
-export const STATS_ROWS = 10
+/**
+ * The title, a gap, six side-by-side tables (a header and up to nine rows each), and an empty row
+ * between them and the sheet's own header.
+ */
+export const STATS_ROWS = 13
+const TABLE_TOP = 2
+const TABLE_ROWS = 9
 
 /** In columns A, B and C, in this order. Contacted At goes after the last column. */
 export const FRONT_COLUMNS: AddedColumn[] = ['status', 'returning', 'groupChat']
 
 export type StatCell = {
   text: string
-  /** heading: the dark title bar; label: a section's name; big: a headline number; small: its label. */
-  style?: 'heading' | 'label' | 'big' | 'small'
+  /** heading: the title bar; head: a table's name; name: a row's name; value: its number. */
+  style?: 'heading' | 'head' | 'name' | 'value'
+  /** A name colored like its chip in the sheet. */
   swatch?: Swatch
+  /** The table's last row, which closes its box. */
+  last?: boolean
 }
 
 export type NewColumn = { column: number; header: string; options: { label: string; swatch: Swatch }[] }
@@ -71,8 +77,9 @@ export type Tending = {
   headerRow: number
   newColumns: NewColumn[]
   /**
-   * Columns whose dropdown and colors are (re)set, replacing the app's earlier ones: all of them
-   * whenever a column is added or moved, so a sheet tended before an option was added gets it.
+   * Columns whose dropdown, chip colors and look are (re)set, replacing the app's earlier ones: all
+   * of them whenever a column is added or moved or the stats block changes shape, so a sheet tended
+   * by an earlier version catches up.
    */
   dropdowns: NewColumn[]
   cells: { row: number; column: number; text: string }[]
@@ -116,126 +123,107 @@ type Person = {
   signedUp: string
 }
 
-// Section names down column A. The last is what tells where the block ends; an older, shorter
-// block ended at "Group chats".
-const SECTIONS = {
-  who: 'Gender & level',
-  returning: 'New vs returning',
-  status: 'Contact status',
-  stages: 'Group chats',
-  chats: 'Group chat status',
-  when: 'When they signed up',
-}
-const LAST_SECTIONS = [SECTIONS.when, 'Group chats']
+// The last row of the first table, which tells where the block ends. Earlier, shorter blocks
+// ended at "When they signed up" and "Group chats".
+const LAST_ROW_NAMES = ['To add to chats', 'When they signed up', 'Group chats']
 
-const GREY = { background: { red: 0.95, green: 0.96, blue: 0.97 }, text: { red: 0.2, green: 0.25, blue: 0.33 } }
+const shortTime = (time: number) =>
+  new Date(time).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 
-/** The block above the header. Row 0 is the title; the rest only change with the numbers. */
+/** The block above the header: the title, then each table in two columns, side by side. */
 export function statsBlock(people: Person[], hasDatabase: boolean, updated: string, now = Date.now()): StatCell[][] {
   const total = people.length
   const count = (test: (p: Person) => boolean) => people.filter(test).length
   const status = (s: ContactStatus) => count((p) => p.status === s)
-  const notComing = count((p) => ['not_coming', 'no_room', 'no_space', 'not_inviting'].includes(p.status))
+  const share = (n: number, of = total) => `${n}  ·  ${percent(n, of)}`
+  type Row = [name: string, value: string, swatch?: Swatch]
+
   const fresh = count((p) => p.returning === 'new')
   const returning = count((p) => p.returning === 'returning')
   const toAdd = count((p) => p.wantsChat && needsChat(p.groupChat) && p.status === 'confirmed')
-  const section = (text: string): StatCell => ({ text, style: 'label' })
-  const item = (label: string, n: number, swatch?: Swatch, of = total): StatCell => ({
-    text: `${label}  ${n}${of ? ` (${percent(n, of)})` : ''}`,
-    swatch,
-  })
-
-  const headline: [string, number, Swatch | undefined][] = [
-    ['signed up', total, GREY],
-    ['confirmed', status('confirmed'), STATUS_COLORS.confirmed],
-    ['awaiting response', status('awaiting_response'), STATUS_COLORS.awaiting_response],
-    ['not contacted yet', status('not_contacted') + status('waiting_to_contact'), STATUS_COLORS.not_contacted],
-    ['no response', status('no_response'), STATUS_COLORS.no_response],
-    ['not coming', notComing, STATUS_COLORS.not_coming],
-    ['new', fresh, RETURNING_COLORS.new],
-    ['returning', returning, RETURNING_COLORS.returning],
-    ['to add to chats', toAdd, STAGE_COLORS.todo],
-  ]
-
-  const ofGender = (g: string) => people.filter((p) => p.gender === g)
-  const levels = (list: Person[]) =>
-    [
-      ['UG', list.filter((p) => p.level === 'undergrad').length],
-      ['grad', list.filter((p) => p.level === 'grad').length],
-      ['other', list.filter((p) => p.level === 'other').length],
-    ]
-      .filter(([, n]) => n)
-      .map(([l, n]) => `${n} ${l}`)
-      .join(', ')
-  const gender = (label: string, g: string): StatCell[] => {
-    const list = ofGender(g)
-    return list.length || g ? [{ text: `${label}  ${list.length}${list.length ? `  ·  ${levels(list)}` : ''}` }] : []
-  }
   const confirmed = people.filter((p) => p.status === 'confirmed')
-
-  const day = (from: number, to: number) => count((p) => {
-    const age = (now - new Date(p.signedUp).getTime()) / 86_400_000
-    return age >= from && age < to
-  })
+  const age = (p: Person) => (now - new Date(p.signedUp).getTime()) / 86_400_000
   const latest = people.map((p) => new Date(p.signedUp).getTime()).filter((t) => !Number.isNaN(t)).sort((a, b) => b - a)[0]
 
-  return [
-    [{ text: `${STATS_TITLE}  ·  kept up to date by ISMP Registration  ·  updated ${updated}`, style: 'heading' }],
-    headline.map(([, n, swatch]) => ({ text: String(n), style: 'big', swatch })),
-    headline.map(([label, , swatch]) => ({ text: label, style: 'small', swatch })),
-    [
-      section(SECTIONS.who),
-      ...gender('Girls', 'female'),
-      ...gender('Guys', 'male'),
-      ...(ofGender('').length ? gender('No gender', '') : []),
-      item('Undergrad', count((p) => p.level === 'undergrad')),
-      item('Grad', count((p) => p.level === 'grad')),
-      item('Not a student', count((p) => p.level === 'other')),
-    ],
-    [
-      section(SECTIONS.returning),
-      ...(hasDatabase
+  const tables: { name: string; rows: Row[] }[] = [
+    {
+      name: 'Overview',
+      rows: [
+        ['Signed up', String(total)],
+        ['Confirmed', share(status('confirmed')), STATUS_COLORS.confirmed],
+        ['Awaiting response', share(status('awaiting_response')), STATUS_COLORS.awaiting_response],
+        ['Not contacted yet', share(status('not_contacted') + status('waiting_to_contact')), STATUS_COLORS.not_contacted],
+        ['No response', share(status('no_response')), STATUS_COLORS.no_response],
+        ['Not coming', share(count((p) => ['not_coming', 'no_room', 'no_space', 'not_inviting'].includes(p.status))), STATUS_COLORS.not_coming],
+        ['New', share(fresh), RETURNING_COLORS.new],
+        ['Returning', share(returning), RETURNING_COLORS.returning],
+        // LAST_ROW_NAMES[0]: always the ninth row.
+        ['To add to chats', String(toAdd), STAGE_COLORS.todo],
+      ],
+    },
+    {
+      name: 'Contact status',
+      rows: CONTACT_STATUSES.map((s) => [titleCase(s.label), share(status(s.value)), STATUS_COLORS[s.value]]),
+    },
+    {
+      name: 'Group chats',
+      rows: GROUP_CHAT_STATUSES.map((s) => [s.label, share(count((p) => p.groupChat === s.value)), STAGE_COLORS[s.stage]]),
+    },
+    {
+      name: 'Gender & level',
+      rows: [
+        ['Girls', share(count((p) => p.gender === 'female'))],
+        ['Guys', share(count((p) => p.gender === 'male'))],
+        ...(count((p) => !p.gender) ? [['No gender', share(count((p) => !p.gender))] as Row] : []),
+        ['Undergrad', share(count((p) => p.level === 'undergrad'))],
+        ['Grad', share(count((p) => p.level === 'grad'))],
+        ['Not a student', share(count((p) => p.level === 'other'))],
+        ...(count((p) => !p.level) ? [['No level', share(count((p) => !p.level))] as Row] : []),
+      ],
+    },
+    {
+      name: 'New vs returning',
+      rows: hasDatabase
         ? [
-            item('New', fresh, RETURNING_COLORS.new),
-            item('Returning', returning, RETURNING_COLORS.returning),
-            {
-              text: `Confirmed: ${confirmed.filter((p) => p.returning === 'new').length} new, ${confirmed.filter((p) => p.returning === 'returning').length} returning`,
-            },
-            ...(total - fresh - returning ? [{ text: `${total - fresh - returning} blank` }] : []),
+            ['New', share(fresh), RETURNING_COLORS.new],
+            ['Returning', share(returning), RETURNING_COLORS.returning],
+            ...(total - fresh - returning ? [['Not looked up', share(total - fresh - returning)] as Row] : []),
+            ['Confirmed, new', share(confirmed.filter((p) => p.returning === 'new').length, confirmed.length)],
+            ['Confirmed, returning', share(confirmed.filter((p) => p.returning === 'returning').length, confirmed.length)],
           ]
-        : [{ text: 'Add a “Student Database” tab to the spreadsheet to tell' }]),
-    ],
-    [
-      section(SECTIONS.status),
-      ...CONTACT_STATUSES.flatMap((s) => {
-        const n = status(s.value)
-        return n ? [item(s.label, n, STATUS_COLORS[s.value])] : []
-      }),
-    ],
-    [
-      section(SECTIONS.stages),
-      ...CHAT_STAGES.map((stage) =>
-        item(stage.label, count((p) => p.groupChat !== null && chatStageOf(p.groupChat) === stage.value), STAGE_COLORS[stage.value]),
-      ),
-      { text: `${toAdd} confirmed and asked to be added` },
-    ],
-    [
-      section(SECTIONS.chats),
-      ...GROUP_CHAT_STATUSES.flatMap((s) => {
-        const n = count((p) => p.groupChat === s.value)
-        return n ? [{ text: `${s.label}  ${n}`, swatch: STAGE_COLORS[s.stage] }] : []
-      }),
-    ],
-    [
-      section(SECTIONS.when),
-      item('Past 24 hours', day(0, 1)),
-      item('1–3 days ago', day(1, 3)),
-      item('3–7 days ago', day(3, 7)),
-      item('Over a week ago', day(7, Infinity)),
-      ...(latest ? [{ text: `Latest: ${new Date(latest).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` }] : []),
-    ],
-    [],
+        : [['Add a “Student Database” tab', '—']],
+    },
+    {
+      name: 'Signed up',
+      rows: [
+        ['Past 24 hours', share(count((p) => age(p) >= 0 && age(p) < 1))],
+        ['1–3 days ago', share(count((p) => age(p) >= 1 && age(p) < 3))],
+        ['3–7 days ago', share(count((p) => age(p) >= 3 && age(p) < 7))],
+        ['Over a week ago', share(count((p) => age(p) >= 7))],
+        ...(latest ? [['Latest', shortTime(latest)] as Row] : []),
+      ],
+    },
   ]
+
+  const block: StatCell[][] = Array.from({ length: STATS_ROWS }, () => [])
+  block[0] = [{ text: `${STATS_TITLE}  ·  kept up to date by ISMP Registration  ·  updated ${updated}`, style: 'heading' }]
+  tables.forEach((table, t) => {
+    const column = t * 2
+    const put = (row: number, cells: StatCell[]) => {
+      const line = block[row]
+      while (line.length < column) line.push({ text: '' })
+      line.splice(column, 2, ...cells)
+    }
+    put(TABLE_TOP, [{ text: table.name, style: 'head' }, { text: '', style: 'head' }])
+    table.rows.slice(0, TABLE_ROWS).forEach(([name, value, swatch], i) => {
+      const last = i === Math.min(table.rows.length, TABLE_ROWS) - 1
+      put(TABLE_TOP + 1 + i, [
+        { text: name, style: 'name', swatch, last },
+        { text: value, style: 'value', last },
+      ])
+    })
+  })
+  return block
 }
 
 const rowTexts = (row: (StatCell | string | undefined)[]) => {
@@ -248,7 +236,7 @@ const rowTexts = (row: (StatCell | string | undefined)[]) => {
 export function statsRowsIn(values: string[][], headerRow: number) {
   if (!clean(values[0]?.[0]).startsWith(STATS_TITLE)) return 0
   let last = 0
-  for (let r = 1; r < headerRow; r++) if (LAST_SECTIONS.includes(clean(values[r]?.[0]))) last = r
+  for (let r = 1; r < headerRow; r++) if (LAST_ROW_NAMES.includes(clean(values[r]?.[0]))) last = r
   return Math.min(last + 2, headerRow)
 }
 
@@ -362,7 +350,8 @@ export function planTending(
     headerRow: parsed.headerRow + shift,
     newColumns,
     dropdowns:
-      columnOps.length || newColumns.length
+      // A new layout of the stats block comes with a new look for the columns too.
+      columnOps.length || newColumns.length || rowOp
         ? FRONT_COLUMNS.map((key) => ({ column: col[key], header: COLUMN_HEADERS[key], options: OPTIONS[key] }))
         : [],
     cells: cells.map((c) => ({ ...c, row: c.row + shift })),
