@@ -669,57 +669,22 @@ async function groupStats(config: AppConfig, spreadsheetId: string, sheetId: num
 
 /**
  * The status columns' dropdowns, on their own so a sheet that won't take them still gets everything
- * else. Returns why not, or null. They're only set again by a new layout or version of the app.
- *
- * Chips: the API can't choose a plain dropdown's display style (it makes arrows), but a Google
- * Sheets table's dropdown column always shows chips. So for each column a table with that dropdown
- * is made on a hidden scratch tab, its rule is pasted over the column (a pasted rule keeps its
- * display style), and the scratch tab is deleted, all in one request. If Google turns that down, the
- * columns get plain arrow dropdowns.
+ * else. Returns why not, or null. They're only set again by a new layout or version of the app, so a
+ * display style chosen by hand in Sheets (the API can't choose one) stays.
  */
 async function applyDropdowns(config: AppConfig, spreadsheetId: string, sheetId: number, tending: Tending): Promise<string | null> {
   if (tending.dropdowns.length === 0) return null
-  const column = (c: number) => ({ sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: c, endColumnIndex: c + 1 })
-  const values = (options: { label: string }[]) => options.map((o) => ({ userEnteredValue: o.label }))
-  const plain = tending.dropdowns.map(({ column: c, options }) => ({
-    setDataValidation: {
-      range: column(c),
-      rule: { condition: { type: 'ONE_OF_LIST', values: values(options) }, showCustomUi: true, strict: false },
-    },
-  }))
-  const chips = tending.dropdowns.flatMap(({ column: c, options }) => {
-    const scratch = 100_000_000 + Math.floor(Math.random() * 900_000_000)
-    const cell = { sheetId: scratch, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: 1 }
-    return [
-      { addSheet: { properties: { sheetId: scratch, title: `ISMP chips ${scratch}`, hidden: true, gridProperties: { rowCount: 2, columnCount: 1 } } } },
-      {
-        addTable: {
-          table: {
-            name: `ISMP_chips_${scratch}`,
-            range: { ...cell, startRowIndex: 0 },
-            columnProperties: [
-              {
-                columnIndex: 0,
-                columnName: 'Status',
-                columnType: 'DROPDOWN',
-                dataValidationRule: { condition: { type: 'ONE_OF_LIST', values: values(options) } },
-              },
-            ],
-          },
+  try {
+    await batchUpdate(
+      config,
+      spreadsheetId,
+      tending.dropdowns.map(({ column, options }) => ({
+        setDataValidation: {
+          range: { sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: column, endColumnIndex: column + 1 },
+          rule: { condition: { type: 'ONE_OF_LIST', values: options.map((o) => ({ userEnteredValue: o.label })) }, showCustomUi: true, strict: false },
         },
-      },
-      { copyPaste: { source: cell, destination: column(c), pasteType: 'PASTE_DATA_VALIDATION' } },
-      { deleteSheet: { sheetId: scratch } },
-    ]
-  })
-  try {
-    await batchUpdate(config, spreadsheetId, chips)
-    return null
-  } catch {
-    // Arrows, then.
-  }
-  try {
-    await batchUpdate(config, spreadsheetId, plain)
+      })),
+    )
     return null
   } catch (err) {
     return `The status columns’ dropdowns couldn’t be set: ${errorMessage(err)}`

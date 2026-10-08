@@ -62,9 +62,9 @@ export type Turnout = Pick<SeatingPlan, 'show_up_rates' | 'walk_in_rate'> & {
  * Bumped when a new version of the app has to redo what an earlier one wrote: the columns' dropdowns
  * and colors and the stats are set again. The version a tab was last tended with is kept in the tab's
  * developer metadata (invisible). 2 corrected the first version's group chat statuses; 3 made the
- * dropdowns chips and the stats collapsible.
+ * stats collapsible; 4 puts back the dropdowns 3 erased trying to make them chips.
  */
-export const TEND_VERSION = 3
+export const TEND_VERSION = 4
 
 export type StatCell = {
   text: string
