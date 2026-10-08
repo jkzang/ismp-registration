@@ -9,10 +9,11 @@ import {
   NeedsSignInError,
   NoAccessError,
   readTab,
+  StatusChangedError,
   withSheetAccess,
   writeStatus,
 } from '../google'
-import { resyncSheet } from '../resync'
+import { readForSync, resyncSheet } from '../resync'
 import {
   BEFORE_CONTACT,
   DEFAULT_MESSAGE,
@@ -132,14 +133,9 @@ export function SignupsPage() {
       setReading(true)
       try {
         const run = () => readTab(config, current.spreadsheet_id, current.tab_id)
-        let data
-        if (interactive) {
-          data = await withSheetAccess(config, current.spreadsheet_id, run)
-          if (!data) return
-        } else {
-          await getAccessToken(config, { interactive: false })
-          data = await run()
-        }
+        if (!interactive) await getAccessToken(config, { interactive: false })
+        const data = await readForSync(current, interactive ? () => withSheetAccess(config, current.spreadsheet_id, run) : run)
+        if (!data) return
         if (sheetRef.current?.id !== current.id) return
         if (writes.current.running || writes.current.done !== before) return
         setRead(readContacts(data.values, current.field_map))
@@ -178,15 +174,27 @@ export function SignupsPage() {
     }
   }, [loadedId, readSheet])
 
-  /** Writes the status into the sheet, then into the app if they're in it yet. Throws when the sheet write fails. */
+  /**
+   * Writes the status into the sheet, then into the app if they're in it yet. Throws when the sheet
+   * write fails. With `expected` (undo and redo), only if the sheet still has that status.
+   */
   const applyStatus = useCallback(
-    async (key: string, status: ContactStatus) => {
+    async (key: string, status: ContactStatus, expected?: ContactStatus) => {
       const current = sheetRef.current
       if (!current) return
       setPending((p) => new Map(p).set(key, status))
       writes.current.running++
       const run = queue.current.then(async () => {
-        await writeStatus(config, current, key, status)
+        try {
+          await writeStatus(config, current, key, status, expected)
+        } catch (err) {
+          // Show what the sheet has now.
+          if (err instanceof StatusChangedError) {
+            const now = err.status
+            setRead((r) => r && { ...r, contacts: r.contacts.map((c) => (c.key === key ? { ...c, status: now } : c)) })
+          }
+          throw err
+        }
         setRead((r) => r && { ...r, contacts: r.contacts.map((c) => (c.key === key ? { ...c, status } : c)) })
         const student = studentByKeyRef.current.get(key)
         if (!student) return
@@ -225,8 +233,9 @@ export function SignupsPage() {
       await applyStatus(contact.key, status)
       push({
         label: `${contact.name}’s status`,
-        undo: () => applyStatus(contact.key, before),
-        redo: () => applyStatus(contact.key, status),
+        // Each only if nobody has changed it since, so undo never overwrites someone else's change.
+        undo: () => applyStatus(contact.key, before, status),
+        redo: () => applyStatus(contact.key, status, before),
       })
       return true
     } catch (err) {

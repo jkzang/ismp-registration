@@ -26,6 +26,10 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   device), and move people who hadn't been contacted to *Awaiting response*. Both views list the
   same people from the same tab; Sign-ups is where contact status is tracked, and Check-in picks
   it up by itself.
+- Several volunteers can use a sheet at once. Each device asks the server for a sync ticket before
+  reading the tab, and the server turns away a re-sync from a read older than the last one it
+  took, so a slow device can't undo newer changes. Undo and redo on the Sign-ups page only change
+  a status nobody else has changed since.
 
 ## Privacy
 

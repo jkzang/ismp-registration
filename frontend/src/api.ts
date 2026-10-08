@@ -83,6 +83,8 @@ export const api = {
   importSheet: (data: NewSheet) => post<Sheet>('/sheets/', data),
   resyncSheet: (id: number, data: SheetRows) =>
     request<ResyncResult>(`/sheets/${id}/rows/`, { method: 'PUT', body: JSON.stringify(data) }),
+  /** The server's time, fetched just before reading the sheet so a re-sync can be put in order. */
+  syncTicket: (id: number) => request<{ ticket: string }>(`/sheets/${id}/sync-ticket/`),
   updateSheet: (id: number, data: Partial<Pick<Sheet, 'name' | 'capacity' | 'starts_at' | 'reserved_released_at'>>) =>
     request<Sheet>(`/sheets/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteSheet: (id: number) => request<void>(`/sheets/${id}/`, { method: 'DELETE' }),

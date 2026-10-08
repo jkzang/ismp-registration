@@ -308,6 +308,31 @@ class ImportTests(ApiTestBase):
         response = self.client.post(f'/api/signups/{amy.id}/status/', {'status': 'not_coming'}, format='json')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_resync_from_an_older_read_is_turned_away(self):
+        sheet = self.import_sheet([row('k1', 'Amy', status='not_contacted')])
+        body = lambda status_, ticket: {
+            'spreadsheet_title': 'Fall Kickoff', 'tab_title': 'Form', 'field_map': {'name': 'Name'},
+            'rows': [row('k1', 'Amy', status=status_)], 'read_at': ticket,
+        }
+        older = self.client.get(f'/api/sheets/{sheet.id}/sync-ticket/').data['ticket']
+        newer = self.client.get(f'/api/sheets/{sheet.id}/sync-ticket/').data['ticket']
+        response = self.client.put(f'/api/sheets/{sheet.id}/rows/', body('confirmed', newer), format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        # A device that read the sheet first, but sent later.
+        response = self.client.put(f'/api/sheets/{sheet.id}/rows/', body('not_contacted', older), format='json')
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(sheet.signups.get().status, 'confirmed')
+
+        # A status set in the app turns away reads from before it, too.
+        amy = sheet.signups.get()
+        before_status = self.client.get(f'/api/sheets/{sheet.id}/sync-ticket/').data['ticket']
+        self.client.post(f'/api/signups/{amy.id}/status/', {'status': 'not_coming'}, format='json')
+        response = self.client.put(f'/api/sheets/{sheet.id}/rows/', body('confirmed', before_status), format='json')
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        after = self.client.get(f'/api/sheets/{sheet.id}/sync-ticket/').data['ticket']
+        response = self.client.put(f'/api/sheets/{sheet.id}/rows/', body('not_coming', after), format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
     def test_chapter_members_share_sheets(self):
         sheet = self.import_sheet([row('k1', 'Amy')])
         self.client.force_authenticate(make_member('444', self.chapter))

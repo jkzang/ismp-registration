@@ -3,25 +3,41 @@
  *
  * Both sheet pages run it in the background whenever they read the tab, so new rows and status
  * changes made in the sheet (or on the Sign-ups page) reach check-in by themselves. A background
- * run sends only when the rows changed since this browser last sent them.
+ * run sends only when the rows changed since this browser last sent them. Every send carries a sync
+ * ticket, and the server turns it away if another device already sent a newer read, so a slow
+ * device can't undo newer changes.
  */
-import { api, errorMessage } from './api'
+import { api, ApiError, errorMessage } from './api'
 import { readDatabaseTab, writeCells, type readTab } from './google'
 import { importWarnings } from './sheetParser'
 import { locateFieldMap } from './signupTracker'
 import { parseWithDatabase, type Fill } from './studentDatabase'
 import type { AppConfig, ResyncResult, Sheet } from './types'
 
-export type TabData = Awaited<ReturnType<typeof readTab>>
+export type TabData = Awaited<ReturnType<typeof readTab>> & {
+  /** The sync ticket fetched just before the read. */
+  readAt?: string
+}
 export type Synced = { result: ResyncResult; fills: Fill[]; writeError: string | null }
 
 // What each sheet's rows were last sent as, from this browser.
 const lastSent = new Map<number, string>()
 
 /**
+ * Gets a sync ticket from the server, then reads the tab with `read` (or null if that gives up), so
+ * the server can turn away a send from this read if another device already sent a newer one.
+ */
+export async function readForSync(sheet: Sheet, read: () => Promise<TabData | null>): Promise<TabData | null> {
+  const { ticket } = await api.syncTicket(sheet.id)
+  const data = await read()
+  return data && { ...data, readAt: ticket }
+}
+
+/**
  * Sends `data` (the tab as readTab just read it) to the server. With `auto`, skips it when nothing
  * changed since the last send, and when it would drop more than half of `knownKeys` (the sign-ups
- * the app has): more likely a half-edited sheet than that many people leaving. Null when skipped.
+ * the app has): more likely a half-edited sheet than that many people leaving. Null when skipped, or
+ * when the server already has a newer read.
  */
 export async function resyncSheet(
   config: AppConfig,
@@ -39,6 +55,7 @@ export async function resyncSheet(
     warnings: importWarnings(parsed),
   }
   const signature = JSON.stringify(body)
+  const send = { ...body, read_at: data.readAt ?? null }
   if (auto) {
     if (lastSent.get(sheet.id) === signature) return null
     const keys = new Set(parsed.rows.map((r) => r.key))
@@ -52,7 +69,14 @@ export async function resyncSheet(
   } catch (err) {
     writeError = errorMessage(err, 'Couldn’t write to the sheet.')
   }
-  const result = await api.resyncSheet(sheet.id, body)
+  let result: ResyncResult
+  try {
+    result = await api.resyncSheet(sheet.id, send)
+  } catch (err) {
+    // Another device sent a newer read of the sheet (or a status was set in the app) since this read.
+    if (err instanceof ApiError && err.status === 409) return null
+    throw err
+  }
   lastSent.set(sheet.id, signature)
   return { result, fills, writeError }
 }

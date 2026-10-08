@@ -10,7 +10,7 @@ import { useAttendanceSync, type AttendanceStatus } from '../attendanceSync'
 import { useCheckInTabSync, type CheckInTabStatus } from '../checkInTabSync'
 import { getAccessToken, readTab, withSheetAccess } from '../google'
 import { toLocalInput } from '../localTime'
-import { describeResync, resyncSheet } from '../resync'
+import { describeResync, readForSync, resyncSheet } from '../resync'
 import { sheetName, signupsKey, type SeatingPlan, type Sheet } from '../types'
 import { useUndo } from '../undo'
 import { RESERVE_MINUTES } from '../capacity'
@@ -340,7 +340,8 @@ export function SheetPage() {
     pulling.current = true
     try {
       await getAccessToken(config, { interactive: false })
-      const data = await readTab(config, current.spreadsheet_id, current.tab_id)
+      const data = await readForSync(current, () => readTab(config, current.spreadsheet_id, current.tab_id))
+      if (!data) return
       const synced = await resyncSheet(config, current, data, {
         auto: true,
         knownKeys: planRef.current?.students.map((s) => s.key),
@@ -373,9 +374,17 @@ export function SheetPage() {
     setResyncing(true)
     setError(null)
     try {
-      const data = await withSheetAccess(config, sheet.spreadsheet_id, () => readTab(config, sheet.spreadsheet_id, sheet.tab_id))
+      const data = await readForSync(sheet, () =>
+        withSheetAccess(config, sheet.spreadsheet_id, () => readTab(config, sheet.spreadsheet_id, sheet.tab_id)),
+      )
       if (!data) return
-      const synced = (await resyncSheet(config, sheet, data))!
+      const synced = await resyncSheet(config, sheet, data)
+      // Another volunteer's device synced the sheet even more recently.
+      if (!synced) {
+        takePlan(await api.getPlan(sheet.id))
+        notify('Re-synced: already up to date')
+        return
+      }
       const { result, writeError } = synced
       setSheet(result.sheet)
       takePlan(await api.getPlan(sheet.id))

@@ -48,6 +48,8 @@ export type SheetRows = {
   field_map: FieldMap
   rows: SignupRow[]
   warnings: string[]
+  /** The sync ticket fetched just before the sheet was read; the server turns away reads older than the last one. */
+  read_at?: string | null
 }
 
 /** The start time, capacity and absent mentors are asked for at import. */

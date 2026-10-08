@@ -9,7 +9,7 @@ import { checkInTabTitle, type CheckInLayout } from './checkInTab'
 import { parseSheet, type ContactStatus, type FieldMap } from './sheetParser'
 import { locateFieldMap, statusText } from './signupTracker'
 import { isDatabaseTab } from './studentDatabase'
-import type { AppConfig } from './types'
+import { CONTACT_STATUSES, type AppConfig } from './types'
 
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/drive.file'
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets'
@@ -288,6 +288,16 @@ export async function writeAttendance(
 
 export class NoStatusColumnError extends Error {}
 
+/** Someone else changed the status since; `status` is what the sheet has now. */
+export class StatusChangedError extends Error {
+  status: ContactStatus
+  constructor(name: string, status: ContactStatus) {
+    const label = CONTACT_STATUSES.find((s) => s.value === status)?.label
+    super(`${name}’s status was changed to ${label} by someone else since, so it was left as is.`)
+    this.status = status
+  }
+}
+
 /**
  * Sets one sign-up's Contact Status cell (`key` is their row's key). The tab is read again first, so
  * the right row is found even if rows were added or sorted since the page last read it.
@@ -297,6 +307,8 @@ export async function writeStatus(
   sheet: { spreadsheet_id: string; tab_id: number; field_map: FieldMap },
   key: string,
   status: ContactStatus,
+  /** For undo and redo: only write if the sheet still has this, so someone else's newer change stays. */
+  expected?: ContactStatus,
 ) {
   const { tabTitle, values } = await readTab(config, sheet.spreadsheet_id, sheet.tab_id)
   const parsed = parseSheet(values, { fieldMap: locateFieldMap(sheet.field_map) })
@@ -306,6 +318,8 @@ export async function writeStatus(
   }
   const i = parsed.rows.findIndex((row) => row.key === key)
   if (i === -1) throw new Error('That sign-up is no longer in the sheet, or their name or timestamp changed. Refresh and try again.')
+  const now = parsed.rows[i].status
+  if (expected !== undefined && now !== expected && now !== status) throw new StatusChangedError(parsed.rows[i].name, now)
   await writeCells(config, sheet.spreadsheet_id, tabTitle, [
     { row: parsed.rowIndexes[i], column, text: statusText(values, parsed, status) },
   ])

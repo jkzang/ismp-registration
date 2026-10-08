@@ -1,12 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./google', () => ({ readDatabaseTab: vi.fn(async () => null), writeCells: vi.fn(async () => {}) }))
-vi.mock('./api', () => ({
-  api: { resyncSheet: vi.fn(async () => ({ sheet: {}, added: 0, updated: 0, removed: 0 })) },
-  errorMessage: (_: unknown, fallback: string) => fallback,
-}))
+vi.mock('./api', () => {
+  class ApiError extends Error {
+    status: number
+    constructor(message: string, status: number) {
+      super(message)
+      this.status = status
+    }
+  }
+  return {
+    ApiError,
+    api: { resyncSheet: vi.fn(async () => ({ sheet: {}, added: 0, updated: 0, removed: 0 })) },
+    errorMessage: (_: unknown, fallback: string) => fallback,
+  }
+})
 
-const { api } = await import('./api')
+const { api, ApiError } = await import('./api')
 const { resyncSheet } = await import('./resync')
 const { parseSheet } = await import('./sheetParser')
 
@@ -43,5 +53,15 @@ describe('background re-sync', () => {
     expect(await resyncSheet(config, sheet(), tab([['1', 'Amy']]), { auto: true, knownKeys })).toBeNull()
     expect(await resyncSheet(config, sheet(), tab(rows.slice(0, 2)), { auto: true, knownKeys })).not.toBeNull()
     expect(await resyncSheet(config, sheet(), tab([['1', 'Amy']]), { knownKeys })).not.toBeNull()
+  })
+
+  it('gives way to a newer read another device already sent, and tries again next time', async () => {
+    const s = sheet()
+    const data = { ...tab([['1', 'Amy', 'Confirmed']]), readAt: '2026-10-08T12:00:00Z' }
+    vi.mocked(api.resyncSheet).mockRejectedValueOnce(new ApiError('newer read', 409))
+    expect(await resyncSheet(config, s, data, { auto: true })).toBeNull()
+    expect(vi.mocked(api.resyncSheet).mock.calls[0][1]).toMatchObject({ read_at: '2026-10-08T12:00:00Z' })
+    // Not counted as sent, so the next read sends it again.
+    expect(await resyncSheet(config, s, data, { auto: true })).not.toBeNull()
   })
 })
