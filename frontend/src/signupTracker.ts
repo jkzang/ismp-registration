@@ -161,6 +161,27 @@ export function shortTimestamp(text: string) {
   return date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** When they signed up, for the Sign-ups page's time filter. The value is a range in days. */
+export const SIGNED_UP_RANGES: { value: string; label: string; days: [number, number] | null }[] = [
+  { value: 'any', label: 'Any time', days: null },
+  { value: 'day', label: 'Past day', days: [0, 1] },
+  { value: '3days', label: 'Past 3 days', days: [0, 3] },
+  { value: 'week', label: 'Past week', days: [0, 7] },
+  { value: 'older', label: 'Over a week ago', days: [7, Infinity] },
+]
+
+/** Whether they signed up in the range. A timestamp that can't be read only matches "Any time". */
+export function signedUpWithin(signedUp: string, range: string, now = Date.now()) {
+  const days = SIGNED_UP_RANGES.find((r) => r.value === range)?.days
+  if (!days) return true
+  const time = new Date(signedUp).getTime()
+  if (Number.isNaN(time)) return false
+  const age = (now - time) / DAY_MS
+  return age >= days[0] && age < days[1]
+}
+
 /** "WeChat ID" → "WeChat": the header, less the words that only say it's an ID. */
 export const socialLabel = (header: string) =>
   header.replace(/\(.*?\)/g, '').replace(/\b(your|id|username|user name|handle|account)\b/gi, '').replace(/[?:]/g, '').replace(/\s+/g, ' ').trim() || header

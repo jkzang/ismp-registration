@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { api, ApiError, errorMessage } from '../api'
 import { useApp } from '../appContext'
 import { ChartIcon, CheckIcon, CloseIcon, MailIcon, MessageIcon, PhoneIcon, RefreshIcon, SearchIcon } from '../components/icons'
+import { Segmented } from '../components/Segmented'
 import { SheetViews } from '../components/SheetViews'
 import { OverviewDialog } from '../components/SignupsOverview'
 import {
@@ -25,6 +26,8 @@ import {
   mailtoHref,
   readContacts,
   shortTimestamp,
+  SIGNED_UP_RANGES,
+  signedUpWithin,
   smsHref,
   socialLabel,
   STATUS_GROUPS,
@@ -39,6 +42,20 @@ const REFRESH_MS = 30_000
 
 const GENDER_LABELS = { female: 'Girl', male: 'Guy' } as const
 const LEVEL_LABELS = { undergrad: 'Undergrad', grad: 'Grad', other: 'Not a student' } as const
+
+const GENDER_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'female', label: 'Girls' },
+  { value: 'male', label: 'Guys' },
+] as const
+const LEVEL_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'undergrad', label: 'Undergrad' },
+  { value: 'grad', label: 'Grad' },
+  { value: 'other', label: 'Not a student' },
+] as const
+type GenderFilter = (typeof GENDER_FILTERS)[number]['value']
+type LevelFilter = (typeof LEVEL_FILTERS)[number]['value']
 
 type Read = ReturnType<typeof readContacts>
 
@@ -105,6 +122,9 @@ export function SignupsPage() {
   const [overviewOpen, setOverviewOpen] = useState(false)
   const [group, setGroup] = useState('all')
   const [query, setQuery] = useState('')
+  const [signedUpRange, setSignedUpRange] = useState('any')
+  const [genderFilter, setGenderFilter] = useState<GenderFilter>('all')
+  const [levelFilter, setLevelFilter] = useState<LevelFilter>('all')
   const [editingMessage, setEditingMessage] = useState(false)
   const [template, setTemplate] = useMessageTemplate(sheetId)
 
@@ -356,8 +376,20 @@ export function SignupsPage() {
     c.email.toLowerCase().includes(q) ||
     c.socials.some((s) => s.id.toLowerCase().includes(q)) ||
     (qDigits.length >= 3 && c.phone.replace(/\D/g, '').includes(qDigits))
+  const filtered = signedUpRange !== 'any' || genderFilter !== 'all' || levelFilter !== 'all'
+  const passesFilters = (c: Contact) =>
+    signedUpWithin(c.signedUp, signedUpRange) &&
+    (genderFilter === 'all' || c.gender === genderFilter) &&
+    (levelFilter === 'all' || c.level === levelFilter)
+  const clearFilters = () => {
+    setSignedUpRange('any')
+    setGenderFilter('all')
+    setLevelFilter('all')
+  }
+  // The status tabs count who's left after the time, gender and enrollment filters.
+  const filteredContacts = contacts.filter(passesFilters)
   // The form adds rows at the bottom, so the newest sign-ups come first.
-  const shown = contacts.filter((c) => inGroup(c, group) && matches(c)).reverse()
+  const shown = filteredContacts.filter((c) => inGroup(c, group) && matches(c)).reverse()
   const groups = [
     ...STATUS_GROUPS,
     ...(read?.columns.chat ? [{ value: CHAT_GROUP, label: 'Add to chats' }] : []),
@@ -421,6 +453,7 @@ export function SignupsPage() {
             columns={read.columns}
             onShowChatList={() => {
               setQuery('')
+              clearFilters()
               setGroup(CHAT_GROUP)
             }}
           />
@@ -447,7 +480,7 @@ export function SignupsPage() {
                   className={group === g.value ? 'is-on' : ''}
                   onClick={() => setGroup(g.value)}
                 >
-                  {g.label} <span className="tab-count">{contacts.filter((c) => inGroup(c, g.value)).length}</span>
+                  {g.label} <span className="tab-count">{filteredContacts.filter((c) => inGroup(c, g.value)).length}</span>
                 </button>
               ))}
             </div>
@@ -484,6 +517,31 @@ export function SignupsPage() {
                 <RefreshIcon />
               </button>
             </div>
+            <div className="signups-filters">
+              <label className="signups-filter">
+                <span>Signed up</span>
+                <select value={signedUpRange} onChange={(e) => setSignedUpRange(e.target.value)}>
+                  {SIGNED_UP_RANGES.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="signups-filter">
+                <span>Gender</span>
+                <Segmented label="Gender" value={genderFilter} options={[...GENDER_FILTERS]} onChange={setGenderFilter} />
+              </div>
+              <div className="signups-filter">
+                <span>Enrollment</span>
+                <Segmented label="Enrollment" value={levelFilter} options={[...LEVEL_FILTERS]} onChange={setLevelFilter} />
+              </div>
+              {filtered && (
+                <button type="button" className="link-button" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              )}
+            </div>
             {editingMessage && (
               <div className="message-editor">
                 <label>
@@ -516,7 +574,6 @@ export function SignupsPage() {
               const chatAdded = chatAddedOf(c)
               const message = fillMessage(template, c, event)
               const phone = dialable(c.phone)
-              const details = [c.gender && GENDER_LABELS[c.gender], c.level && LEVEL_LABELS[c.level]].filter(Boolean).join(' · ')
               return (
                 <li key={c.key} className={pending.has(c.key) || pendingChat.has(c.key) ? 'is-saving' : ''}>
                   <div className="signup-person">
@@ -525,7 +582,8 @@ export function SignupsPage() {
                       {c.nickname && <span className="checkin-nickname">“{c.nickname}”</span>}
                     </span>
                     <span className="signup-meta">
-                      {details && <span>{details}</span>}
+                      {c.gender && <span className={`detail-chip gender-${c.gender}`}>{GENDER_LABELS[c.gender]}</span>}
+                      {c.level && <span className={`detail-chip level-${c.level}`}>{LEVEL_LABELS[c.level]}</span>}
                       {c.signedUp && <span title={c.signedUp}>Signed up {shortTimestamp(c.signedUp)}</span>}
                     </span>
                     {(c.phone || c.email || c.socials.length > 0) && (
