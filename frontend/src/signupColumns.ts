@@ -49,6 +49,7 @@ export type GroupChatStatus =
   | 'wechat_invite_sent'
   | 'added_wechat'
   | 'added_line'
+  | 'already_in'
   | 'declined'
 
 export const CHAT_STAGES: { value: ChatStage; label: string }[] = [
@@ -65,6 +66,8 @@ export const GROUP_CHAT_STATUSES: { value: GroupChatStatus; label: string; stage
   { value: 'wechat_invite_sent', label: 'WeChat Group Invite Sent', stage: 'pending' },
   { value: 'added_wechat', label: 'Added To WeChat', stage: 'complete' },
   { value: 'added_line', label: 'Added To Line', stage: 'complete' },
+  // Answered "Yes!" on the form: already in our group chats.
+  { value: 'already_in', label: 'Already In Group', stage: 'complete' },
   { value: 'declined', label: "Doesn't Want To Join", stage: 'na' },
 ]
 

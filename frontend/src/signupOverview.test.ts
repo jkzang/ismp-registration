@@ -5,11 +5,11 @@ import { readContacts } from './signupTracker'
 const values = [
   ['Timestamp', 'Name', 'Gender', 'Enrollment Status', 'Contact Status', 'How did you hear about this event?',
     'Would you like to join our group chats?', 'WeChat ID', 'Instagram', 'Group Chat Status', 'New or Returning'],
-  ['1', 'Amy', 'Female', 'Undergrad', 'Confirmed', 'Friend, Instagram', 'Yes', 'amy_wx', '', 'Added To WeChat', 'Returning'],
-  ['2', 'Bea', 'Female', 'Grad', 'Confirmed', 'friend', 'Yes please', '', '@bea', 'Not Invited', 'New'],
-  ['3', 'Cal', 'Male', 'Undergrad', 'Awaiting response', '', 'No', 'cal_wx', '', "Doesn't Want To Join", 'New'],
-  ['4', 'Dee', 'Female', 'Other', 'Confirmed', 'Flyer', 'Yes', '', '', '', ''],
-  ['5', 'Eli', 'Male', 'Grad', 'Not coming', 'Flyer', 'Yes', 'eli', '', 'Line QR Shared', 'Returning'],
+  ['1', 'Amy', 'Female', 'Undergrad', 'Confirmed', 'Friend, Instagram', 'Yes!', 'amy_wx', '', 'Added To WeChat', 'Returning'],
+  ['2', 'Bea', 'Female', 'Grad', 'Confirmed', 'friend', 'No - Please help me join!', '', '@bea', 'Not Invited', 'New'],
+  ['3', 'Cal', 'Male', 'Undergrad', 'Awaiting response', '', 'No thank you, I don’t want to be added', 'cal_wx', '', "Doesn't Want To Join", 'New'],
+  ['4', 'Dee', 'Female', 'Other', 'Confirmed', 'Flyer', 'No - please help me join', '', '', '', ''],
+  ['5', 'Eli', 'Male', 'Grad', 'Not coming', 'Flyer', 'Please help me join', 'eli', '', 'Line QR Shared', 'Returning'],
 ]
 
 const plan: OverviewPlan = {
@@ -33,8 +33,8 @@ describe('readContacts extras', () => {
     expect(contacts[1].socials).toEqual([{ label: 'Instagram', id: '@bea' }])
   })
   it('reads who wants to join, their group chat status and whether they’re returning', () => {
-    expect(contacts.map((c) => c.wantsChat)).toEqual([true, true, false, true, true])
-    expect(contacts.map((c) => c.declinedChat)).toEqual([false, false, true, false, false])
+    expect(contacts.map((c) => c.chatAnswer)).toEqual(['in', 'add', 'declined', 'add', 'add'])
+    expect(contacts.map((c) => c.wantsChat)).toEqual([false, true, false, true, true])
     expect(contacts.map((c) => c.groupChat)).toEqual(['added_wechat', 'not_invited', 'declined', null, 'line_qr_shared'])
     expect(contacts.map((c) => c.returning)).toEqual(['returning', 'new', 'new', '', 'returning'])
   })
@@ -84,7 +84,7 @@ describe('overviewOf', () => {
   })
 
   it('counts the group chats among people still coming', () => {
-    expect(o.chats).toMatchObject({ wanting: 3, confirmed: 3, added: 1, toAdd: 2 })
+    expect(o.chats).toMatchObject({ wanting: 2, confirmed: 2, added: 1, toAdd: 2 })
     expect(o.chats.stages.map((s) => [s.value, s.count])).toEqual([['todo', 1], ['pending', 1], ['complete', 1], ['na', 1]])
   })
 

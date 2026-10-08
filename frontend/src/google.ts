@@ -8,7 +8,7 @@
 import { checkInTabTitle, type CheckInLayout } from './checkInTab'
 import { parseSheet, type ContactStatus, type FieldMap } from './sheetParser'
 import { formatStamp, groupChatLabel, groupChatOf, type GroupChatStatus } from './signupColumns'
-import { STATS_ROWS, type Tending } from './sheetTending'
+import { STATS_ROWS, type StatCell, type Tending } from './sheetTending'
 import { extraColumns, locateFieldMap, statusText } from './signupTracker'
 import { isDatabaseTab } from './studentDatabase'
 import { CONTACT_STATUSES, type AppConfig } from './types'
@@ -459,9 +459,29 @@ export async function writeCheckInTab(
 export async function applyTending(config: AppConfig, spreadsheetId: string, tab: Tab, tending: Tending) {
   const sheetId = tab.id
   const requests: unknown[] = []
-  if (tending.insertStats) {
+  if (tending.dropdowns.length) {
+    // The app's own color rules (text equal to one of its options) go, to be added again below.
+    const labels = new Set(tending.dropdowns.flatMap((d) => d.options.map((o) => o.label)))
+    type Rule = { booleanRule?: { condition?: { type?: string; values?: { userEnteredValue?: string }[] } } }
+    const meta = await sheetsFetch<{ sheets: { properties: { sheetId: number }; conditionalFormats?: Rule[] }[] }>(
+      config,
+      `${encodeURIComponent(spreadsheetId)}?fields=${encodeURIComponent('sheets(properties.sheetId,conditionalFormats)')}`,
+    )
+    const rules = meta.sheets.find((s) => s.properties.sheetId === sheetId)?.conditionalFormats ?? []
+    rules.forEach((rule, index) => {
+      const condition = rule.booleanRule?.condition
+      const value = condition?.values?.[0]?.userEnteredValue
+      if (condition?.type === 'TEXT_EQ' && value !== undefined && labels.has(value)) {
+        // Last first, so the indexes before it still hold.
+        requests.unshift({ deleteConditionalFormatRule: { sheetId, index } })
+      }
+    })
+  }
+  const op = tending.rowOp
+  if (op) {
+    const range = { sheetId, dimension: 'ROWS', startIndex: op.at, endIndex: op.at + op.count }
     requests.push(
-      { insertDimension: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: STATS_ROWS }, inheritFromBefore: false } },
+      op.kind === 'insert' ? { insertDimension: { range, inheritFromBefore: false } } : { deleteDimension: { range } },
       // The stats and the header stay in view.
       {
         updateSheetProperties: {
@@ -471,11 +491,24 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
       },
     )
   }
-  if (tending.columnCount > tab.columns) {
-    requests.push({ appendDimension: { sheetId, dimension: 'COLUMNS', length: tending.columnCount - tab.columns } })
+  let columns = tab.columns
+  for (const c of tending.columnOps) {
+    if (c.kind === 'insert') {
+      columns++
+      requests.push({
+        insertDimension: { range: { sheetId, dimension: 'COLUMNS', startIndex: c.at, endIndex: c.at + 1 }, inheritFromBefore: false },
+      })
+    } else {
+      // The destination counts columns as they are before the move; moves here only go left.
+      requests.push({
+        moveDimension: { source: { sheetId, dimension: 'COLUMNS', startIndex: c.from, endIndex: c.from + 1 }, destinationIndex: c.to },
+      })
+    }
   }
-  for (const { column, options } of tending.newColumns) {
-    const range = { sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: column, endColumnIndex: column + 1 }
+  if (tending.columnCount > columns) {
+    requests.push({ appendDimension: { sheetId, dimension: 'COLUMNS', length: tending.columnCount - columns } })
+  }
+  for (const { column } of tending.newColumns) {
     requests.push({
       updateDimensionProperties: {
         range: { sheetId, dimension: 'COLUMNS', startIndex: column, endIndex: column + 1 },
@@ -483,7 +516,9 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
         fields: 'pixelSize',
       },
     })
-    if (options.length === 0) continue
+  }
+  for (const { column, options } of tending.dropdowns) {
+    const range = { sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: column, endColumnIndex: column + 1 }
     requests.push({
       setDataValidation: {
         range,
@@ -519,28 +554,27 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
     })
   }
   if (tending.stats) {
-    requests.push({
-      updateCells: {
-        // The whole width, so a shorter line clears what the last one left.
-        range: { sheetId, startRowIndex: 0, endRowIndex: STATS_ROWS, startColumnIndex: 0, endColumnIndex: Math.max(tending.columnCount, tab.columns) },
-        rows: tending.stats.map((row, r) => ({
-          values: row.map((c) => ({
-            userEnteredValue: { stringValue: c.text },
-            userEnteredFormat: {
-              verticalAlignment: 'MIDDLE',
-              wrapStrategy: 'OVERFLOW_CELL',
-              ...(c.swatch && { backgroundColor: c.swatch.background, horizontalAlignment: 'CENTER' }),
-              textFormat: {
-                bold: !!c.bold || !!c.swatch,
-                fontSize: r === 0 ? 12 : 10,
-                ...(c.swatch && { foregroundColor: c.swatch.text }),
-              },
-            },
+    const width = Math.max(tending.columnCount, tab.columns)
+    requests.push(
+      {
+        updateCells: {
+          // The whole width, so a shorter line clears what the last one left.
+          range: { sheetId, startRowIndex: 0, endRowIndex: STATS_ROWS, startColumnIndex: 0, endColumnIndex: width },
+          rows: tending.stats.map((row, r) => ({
+            // The title bar runs the whole width.
+            values: Array.from({ length: r === 0 ? width : row.length }, (_, c) => statCell(row[c] ?? { text: '', style: 'heading' })),
           })),
-        })),
-        fields: 'userEnteredValue,userEnteredFormat',
+          fields: 'userEnteredValue,userEnteredFormat',
+        },
       },
-    })
+      ...STATS_ROW_HEIGHTS.map((pixelSize, r) => ({
+        updateDimensionProperties: {
+          range: { sheetId, dimension: 'ROWS', startIndex: r, endIndex: r + 1 },
+          properties: { pixelSize },
+          fields: 'pixelSize',
+        },
+      })),
+    )
   }
   if (requests.length === 0) return
   try {
@@ -548,5 +582,35 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
   } catch (err) {
     if (err instanceof NoAccessError) throw new Error('You can view this spreadsheet but not edit it. Ask its owner for edit access.')
     throw err
+  }
+}
+
+// Title, headline numbers and their labels, the six detail lines, and the gap before the header.
+const STATS_ROW_HEIGHTS = [34, 38, 22, 26, 26, 26, 26, 26, 26, 12]
+const INK = { red: 0.2, green: 0.25, blue: 0.33 }
+const SEPARATOR = { style: 'SOLID_MEDIUM', color: { red: 1, green: 1, blue: 1 } }
+
+/** One cell of the stats block, as Sheets' CellData. */
+function statCell({ text, style, swatch }: StatCell) {
+  const background =
+    style === 'heading' ? { red: 0.12, green: 0.16, blue: 0.23 } : style === 'label' ? { red: 0.95, green: 0.96, blue: 0.97 } : swatch?.background
+  const color = style === 'heading' ? { red: 1, green: 1, blue: 1 } : swatch?.text ?? INK
+  const centered = style === 'big' || style === 'small'
+  return {
+    ...(text && { userEnteredValue: { stringValue: text } }),
+    userEnteredFormat: {
+      verticalAlignment: style === 'big' ? 'BOTTOM' : style === 'small' ? 'TOP' : 'MIDDLE',
+      horizontalAlignment: centered ? 'CENTER' : 'LEFT',
+      wrapStrategy: style === 'heading' ? 'OVERFLOW_CELL' : 'CLIP',
+      padding: { left: 8, right: 8 },
+      ...(background && { backgroundColor: background }),
+      // A white line between colored cells, so each reads as its own tile.
+      ...(swatch && { borders: { left: SEPARATOR, right: SEPARATOR } }),
+      textFormat: {
+        foregroundColor: color,
+        bold: style !== 'small' && (style !== undefined || !!swatch),
+        fontSize: style === 'heading' ? 13 : style === 'big' ? 18 : style === 'small' ? 9 : 10,
+      },
+    },
   }
 }

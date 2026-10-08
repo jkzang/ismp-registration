@@ -219,7 +219,7 @@ export function SignupsOverview({ overview, capacity, columns, onShowChatList }:
           <>
             <dl className="overview-stats">
               <div>
-                <dt>Want to join</dt>
+                <dt>Asked to be added</dt>
                 <dd>{chats.wanting}</dd>
               </div>
               <div>
