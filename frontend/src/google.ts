@@ -304,14 +304,30 @@ export async function writeCheckInTab(
   const source = tabs.find((t) => t.sheetId === sheet.tab_id)
   if (!source) throw new Error('The sign-up tab no longer exists in the spreadsheet.')
   const title = checkInTabTitle(source.title)
-  const { rows, columnCount, frozenRows, columnWidths } = layout(title)
-  const grid = { rowCount: Math.max(rows.length, frozenRows + 1), columnCount, frozenRowCount: frozenRows }
+  const { rows, columnCount, frozenRows, columnWidths, rowHeights } = layout(title)
+  const grid = { rowCount: Math.max(rows.length, frozenRows + 1), columnCount, frozenRowCount: frozenRows, hideGridlines: true }
+  const tabColor = { red: 0.09, green: 0.64, blue: 0.29 }
+  let tabId: number | undefined
+  const size = (dimension: 'ROWS' | 'COLUMNS', startIndex: number, endIndex: number, pixelSize: number) => ({
+    updateDimensionProperties: {
+      range: { sheetId: tabId, dimension, startIndex, endIndex },
+      properties: { pixelSize },
+      fields: 'pixelSize',
+    },
+  })
+  // One request per run of rows the same height.
+  const heights: { start: number; end: number; height: number }[] = []
+  rowHeights.forEach((height, i) => {
+    const last = heights.at(-1)
+    if (last?.height === height) last.end = i + 1
+    else heights.push({ start: i, end: i + 1, height })
+  })
   try {
-    let tabId = tabs.find((t) => t.title === title)?.sheetId
+    tabId = tabs.find((t) => t.title === title)?.sheetId
     if (tabId === undefined) {
       try {
         const added = await batchUpdate(config, id, [
-          { addSheet: { properties: { title, index: source.index + 1, gridProperties: grid } } },
+          { addSheet: { properties: { title, index: source.index + 1, gridProperties: grid, tabColor } } },
         ])
         tabId = added.replies[0].addSheet!.properties.sheetId
       } catch (err) {
@@ -324,17 +340,12 @@ export async function writeCheckInTab(
     await batchUpdate(config, id, [
       {
         updateSheetProperties: {
-          properties: { sheetId: tabId, gridProperties: grid },
-          fields: 'gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount',
+          properties: { sheetId: tabId, gridProperties: grid, tabColor },
+          fields: 'tabColor,gridProperties.rowCount,gridProperties.columnCount,gridProperties.frozenRowCount,gridProperties.hideGridlines',
         },
       },
-      ...columnWidths.map((pixelSize, i) => ({
-        updateDimensionProperties: {
-          range: { sheetId: tabId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 },
-          properties: { pixelSize },
-          fields: 'pixelSize',
-        },
-      })),
+      ...columnWidths.map((pixelSize, i) => size('COLUMNS', i, i + 1, pixelSize)),
+      ...heights.map(({ start, end, height }) => size('ROWS', start, end, height)),
       // The whole tab, so whatever was there before is cleared.
       { updateCells: { range: { sheetId: tabId }, rows: rows.map((values) => ({ values })), fields: 'userEnteredValue,userEnteredFormat' } },
     ])
