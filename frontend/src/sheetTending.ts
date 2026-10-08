@@ -37,24 +37,47 @@ import {
 } from './signupColumns'
 import { extraColumns, locateFieldMap, readContacts, statusText, type Contact } from './signupTracker'
 import { databaseMatcher } from './studentDatabase'
-import { CONTACT_STATUSES, type ContactStatus } from './types'
+import { CONTACT_STATUSES, type ContactStatus, type SeatingPlan } from './types'
 
 export const STATS_TITLE = 'Sign-up statistics'
 /**
- * The title, a gap, six side-by-side tables (a header and up to nine rows each), and an empty row
+ * The title, a gap, six side-by-side tables (a header and up to nine rows each), and two empty rows
  * between them and the sheet's own header.
  */
-export const STATS_ROWS = 13
+export const STATS_ROWS = 14
 const TABLE_TOP = 2
 const TABLE_ROWS = 9
 
-/** In columns A, B and C, in this order. Contacted At goes after the last column. */
+/** Right after the timestamp (in A), in this order. Contacted At goes after the last column. */
 export const FRONT_COLUMNS: AddedColumn[] = ['status', 'returning', 'groupChat']
+
+/** What the expected attendance is worked out from, as the tables are planned (see signupOverview.ts). */
+export type Turnout = Pick<SeatingPlan, 'show_up_rates' | 'walk_in_rate'> & {
+  /** Keys of the sign-ups already checked in. */
+  checkedIn: Set<string>
+  capacity: number | null
+}
+
+/**
+ * A range to make a Google Sheets table, so its dropdown columns show as chips (the only way the
+ * API can). The sign-ups are one, and so are the stats' status tables. Names get the tab's id.
+ */
+export type SheetTable = {
+  name: string
+  startRow: number
+  endRow: number
+  startColumn: number
+  endColumn: number
+  /** The table's column names: its header row. */
+  columnNames: string[]
+  /** Dropdown columns, by their index in the table, with their options. */
+  dropdowns: { index: number; options: string[] }[]
+}
 
 export type StatCell = {
   text: string
-  /** heading: the title bar; head: a table's name; name: a row's name; value: its number. */
-  style?: 'heading' | 'head' | 'name' | 'value'
+  /** heading: the title bar; head: a table's name; name: a row's name; value: its number; big: the headline number. */
+  style?: 'heading' | 'head' | 'name' | 'value' | 'big'
   /** A name colored like its chip in the sheet. */
   swatch?: Swatch
   /** The table's last row, which closes its box. */
@@ -87,6 +110,9 @@ export type Tending = {
   stats: StatCell[][] | null
   /** Columns the tab needs for all of it. */
   columnCount: number
+  /** Rows the tab needs: the empty ones below go. */
+  rowCount: number
+  tables: SheetTable[]
   /** The tab's values with all of it in. */
   values: string[][]
   changed: boolean
@@ -114,6 +140,7 @@ function startingChat(contact: Pick<Contact, 'chatAnswer' | 'chatTicked' | 'soci
 }
 
 type Person = {
+  key: string
   gender: string
   level: string
   status: ContactStatus
@@ -123,15 +150,25 @@ type Person = {
   signedUp: string
 }
 
-// The last row of the first table, which tells where the block ends. Earlier, shorter blocks
-// ended at "When they signed up" and "Group chats".
-const LAST_ROW_NAMES = ['To add to chats', 'When they signed up', 'Group chats']
+/** Expected attendance: each sign-up's chance from their status, plus walk-ins. Null without a plan to go by. */
+export function expectedTurnout(people: Pick<Person, 'key' | 'level' | 'status'>[], turnout: Turnout | null) {
+  if (!turnout) return null
+  const checkedIn = people.filter((p) => turnout.checkedIn.has(p.key)).length
+  const likely = Math.round(
+    people.reduce(
+      (sum, p) => sum + (turnout.checkedIn.has(p.key) ? 1 : p.level === 'other' ? 0 : (turnout.show_up_rates[p.status] ?? 0)),
+      0,
+    ),
+  )
+  const walkIns = Math.round(turnout.walk_in_rate * likely)
+  return { likely, walkIns, total: likely + walkIns, checkedIn }
+}
 
-const shortTime = (time: number) =>
-  new Date(time).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+const CONTACT_TABLE = 'Contact status'
+const CHAT_TABLE = 'Group chats'
 
-/** The block above the header: the title, then each table in two columns, side by side. */
-export function statsBlock(people: Person[], hasDatabase: boolean, updated: string, now = Date.now()): StatCell[][] {
+/** The tables in the block, left to right, two columns each. */
+function statsTables(people: Person[], hasDatabase: boolean, turnout: Turnout | null) {
   const total = people.length
   const count = (test: (p: Person) => boolean) => people.filter(test).length
   const status = (s: ContactStatus) => count((p) => p.status === s)
@@ -142,10 +179,28 @@ export function statsBlock(people: Person[], hasDatabase: boolean, updated: stri
   const returning = count((p) => p.returning === 'returning')
   const toAdd = count((p) => p.wantsChat && needsChat(p.groupChat) && p.status === 'confirmed')
   const confirmed = people.filter((p) => p.status === 'confirmed')
-  const age = (p: Person) => (now - new Date(p.signedUp).getTime()) / 86_400_000
-  const latest = people.map((p) => new Date(p.signedUp).getTime()).filter((t) => !Number.isNaN(t)).sort((a, b) => b - a)[0]
+  const expected = expectedTurnout(people, turnout)
+  const capacity = turnout?.capacity ?? null
 
-  const tables: { name: string; rows: Row[] }[] = [
+  const tables: { name: string; rows: Row[]; big?: boolean }[] = [
+    {
+      name: 'Expected attendance',
+      big: true,
+      rows: expected
+        ? [
+            ['Expected', String(expected.total)],
+            ['From sign-ups', String(expected.likely)],
+            [`Walk-ins (+${percent(turnout!.walk_in_rate, 1)})`, String(expected.walkIns)],
+            ['Capacity', capacity === null ? '—' : String(capacity)],
+            ...(capacity === null
+              ? []
+              : expected.total > capacity
+                ? [['Over capacity', String(expected.total - capacity), STATUS_COLORS.not_coming] as Row]
+                : [['Room left', String(capacity - expected.total), STATUS_COLORS.confirmed] as Row]),
+            ...(expected.checkedIn ? [['Checked in', String(expected.checkedIn)] as Row] : []),
+          ]
+        : [['Expected', '—'], ['Open the sheet in the app', '']],
+    },
     {
       name: 'Overview',
       rows: [
@@ -157,16 +212,15 @@ export function statsBlock(people: Person[], hasDatabase: boolean, updated: stri
         ['Not coming', share(count((p) => ['not_coming', 'no_room', 'no_space', 'not_inviting'].includes(p.status))), STATUS_COLORS.not_coming],
         ['New', share(fresh), RETURNING_COLORS.new],
         ['Returning', share(returning), RETURNING_COLORS.returning],
-        // LAST_ROW_NAMES[0]: always the ninth row.
         ['To add to chats', String(toAdd), STAGE_COLORS.todo],
       ],
     },
     {
-      name: 'Contact status',
+      name: CONTACT_TABLE,
       rows: CONTACT_STATUSES.map((s) => [titleCase(s.label), share(status(s.value)), STATUS_COLORS[s.value]]),
     },
     {
-      name: 'Group chats',
+      name: CHAT_TABLE,
       rows: GROUP_CHAT_STATUSES.map((s) => [s.label, share(count((p) => p.groupChat === s.value)), STAGE_COLORS[s.stage]]),
     },
     {
@@ -193,20 +247,20 @@ export function statsBlock(people: Person[], hasDatabase: boolean, updated: stri
           ]
         : [['Add a “Student Database” tab', '—']],
     },
+  ]
+  return { tables, expected }
+}
+
+/** The block above the header: the title, then each table in two columns, side by side. */
+export function statsBlock(people: Person[], hasDatabase: boolean, updated: string, turnout: Turnout | null = null): StatCell[][] {
+  const { tables, expected } = statsTables(people, hasDatabase, turnout)
+  const block: StatCell[][] = Array.from({ length: STATS_ROWS }, () => [])
+  block[0] = [
     {
-      name: 'Signed up',
-      rows: [
-        ['Past 24 hours', share(count((p) => age(p) >= 0 && age(p) < 1))],
-        ['1–3 days ago', share(count((p) => age(p) >= 1 && age(p) < 3))],
-        ['3–7 days ago', share(count((p) => age(p) >= 3 && age(p) < 7))],
-        ['Over a week ago', share(count((p) => age(p) >= 7))],
-        ...(latest ? [['Latest', shortTime(latest)] as Row] : []),
-      ],
+      text: `${STATS_TITLE}  ·  expected attendance ${expected ? expected.total : '—'}  ·  ${people.length} signed up  ·  updated ${updated} by ISMP Registration`,
+      style: 'heading',
     },
   ]
-
-  const block: StatCell[][] = Array.from({ length: STATS_ROWS }, () => [])
-  block[0] = [{ text: `${STATS_TITLE}  ·  kept up to date by ISMP Registration  ·  updated ${updated}`, style: 'heading' }]
   tables.forEach((table, t) => {
     const column = t * 2
     const put = (row: number, cells: StatCell[]) => {
@@ -214,16 +268,36 @@ export function statsBlock(people: Person[], hasDatabase: boolean, updated: stri
       while (line.length < column) line.push({ text: '' })
       line.splice(column, 2, ...cells)
     }
-    put(TABLE_TOP, [{ text: table.name, style: 'head' }, { text: '', style: 'head' }])
+    // Both columns are named, so a status table can be a Google Sheets table.
+    put(TABLE_TOP, [{ text: table.name, style: 'head' }, { text: 'Count', style: 'head' }])
     table.rows.slice(0, TABLE_ROWS).forEach(([name, value, swatch], i) => {
       const last = i === Math.min(table.rows.length, TABLE_ROWS) - 1
+      const big = table.big && i === 0
       put(TABLE_TOP + 1 + i, [
-        { text: name, style: 'name', swatch, last },
-        { text: value, style: 'value', last },
+        { text: name, style: big ? 'big' : 'name', swatch, last },
+        { text: value, style: big ? 'big' : 'value', last },
       ])
     })
   })
   return block
+}
+
+/** The status tables in the stats block, as Google Sheets tables so their statuses show as chips. */
+function statsSheetTables(): SheetTable[] {
+  const tables: [string, string[]][] = [
+    [CONTACT_TABLE, CONTACT_STATUSES.map((s) => titleCase(s.label))],
+    [CHAT_TABLE, GROUP_CHAT_STATUSES.map((s) => s.label)],
+  ]
+  // Third and fourth from the left.
+  return tables.map(([name, options], i) => ({
+    name,
+    startRow: TABLE_TOP,
+    endRow: TABLE_TOP + 1 + options.length,
+    startColumn: (i + 2) * 2,
+    endColumn: (i + 2) * 2 + 2,
+    columnNames: [name, 'Count'],
+    dropdowns: [{ index: 0, options }],
+  }))
 }
 
 const rowTexts = (row: (StatCell | string | undefined)[]) => {
@@ -232,20 +306,30 @@ const rowTexts = (row: (StatCell | string | undefined)[]) => {
   return texts.join('\u0000')
 }
 
-/** How many rows the app's stats block takes at the top of the tab, its blank line included; 0 when there isn't one. */
+/**
+ * How many rows the app's stats block takes at the top of the tab, its empty rows included; 0 when
+ * there isn't one. Every layout so far is the title, maybe an empty row, rows of numbers, then empty
+ * rows before the header.
+ */
 export function statsRowsIn(values: string[][], headerRow: number) {
   if (!clean(values[0]?.[0]).startsWith(STATS_TITLE)) return 0
-  let last = 0
-  for (let r = 1; r < headerRow; r++) if (LAST_ROW_NAMES.includes(clean(values[r]?.[0]))) last = r
-  return Math.min(last + 2, headerRow)
+  const empty = (r: number) => !(values[r] ?? []).some((c) => clean(c))
+  let r = 1
+  while (r < headerRow && empty(r)) r++
+  while (r < headerRow && !empty(r)) r++
+  while (r < headerRow && empty(r)) r++
+  return r
 }
 
-/** Null when the tab can't be read as sign-ups (no header row). */
+/**
+ * Null when the tab can't be read as sign-ups (no header row). `turnout` (from the sheet's plan)
+ * gives the expected attendance; without it the stats show a dash.
+ */
 export function planTending(
   values: string[][],
   fieldMap: FieldMap,
   database: string[][] | null,
-  now = Date.now(),
+  { now = Date.now(), turnout = null }: { now?: number; turnout?: Turnout | null } = {},
 ): Tending | null {
   let parsed: ParseResult
   try {
@@ -266,11 +350,14 @@ export function planTending(
     contactedAt: extra.contactedAt,
   }
   const columnOps: ColumnOp[] = []
-  FRONT_COLUMNS.forEach((key, at) => {
-    const original = found[key]
+  // The timestamp in A, then the three status columns.
+  const timestamp = parsed.columns.timestamp
+  const front: (AddedColumn | 'timestamp')[] = [...(timestamp !== undefined ? ['timestamp' as const] : []), ...FRONT_COLUMNS]
+  front.forEach((key, at) => {
+    const original = key === 'timestamp' ? timestamp : found[key]
     if (original === undefined) {
       columnOps.push({ kind: 'insert', at })
-      order.splice(at, 0, key)
+      order.splice(at, 0, key as AddedColumn)
       return
     }
     const from = order.indexOf(original)
@@ -325,12 +412,15 @@ export function planTending(
       returning = matchOf(i) ? 'returning' : 'new'
       set(row, col.returning, RETURNING_LABELS[returning])
     }
+    // Not Invited is where everyone starts, so it's only ever the app's: an answer of Yes or No
+    // thank you (filled in as Not Invited by the first version) takes it over.
     let groupChat = c.groupChat
-    if (!cell(row, col.groupChat)) {
-      groupChat = startingChat(c)
+    const starting = startingChat(c)
+    if (!cell(row, col.groupChat) || (groupChat === 'not_invited' && starting !== 'not_invited')) {
+      groupChat = starting
       set(row, col.groupChat, groupChatLabel(groupChat))
     }
-    return { gender: c.gender, level: c.level, status, returning, groupChat, wantsChat: c.wantsChat, signedUp: c.signedUp }
+    return { key: c.key, gender: c.gender, level: c.level, status, returning, groupChat, wantsChat: c.wantsChat, signedUp: c.signedUp }
   })
 
   // The stats block, made STATS_ROWS tall.
@@ -338,16 +428,32 @@ export function planTending(
   const rowOp: Tending['rowOp'] =
     shift > 0 ? { kind: 'insert', at: blockRows, count: shift } : shift < 0 ? { kind: 'delete', at: STATS_ROWS, count: -shift } : null
   const updated = new Date(now).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-  const block = statsBlock(people, database !== null, updated, now)
+  const block = statsBlock(people, database !== null, updated, turnout)
   const statsChanged =
     rowOp !== null || columnOps.length > 0 || block.slice(1).some((row, i) => rowTexts(row) !== rowTexts(out[i + 1] ?? []))
   const rest = out.slice(blockRows)
   const final = statsChanged ? [...block.map((row) => row.map((c) => c.text)), ...rest] : out
+  const headerRow = parsed.headerRow + shift
+  // The sign-ups as a table, from the header to the last row, over the named columns.
+  const header = final[headerRow] ?? []
+  let headerWidth = header.length
+  while (headerWidth > 0 && !clean(header[headerWidth - 1])) headerWidth--
+  // Sheets keeps a row under the frozen header (and a table needs one), even with no sign-ups yet.
+  const lastRow = Math.max(headerRow + 2, final.length)
+  const signups: SheetTable = {
+    name: 'Sign-ups',
+    startRow: headerRow,
+    endRow: lastRow,
+    startColumn: 0,
+    endColumn: headerWidth,
+    columnNames: header.slice(0, headerWidth).map((h) => clean(h)),
+    dropdowns: FRONT_COLUMNS.map((key) => ({ index: col[key], options: OPTIONS[key].map((o) => o.label) })),
+  }
 
   return {
     rowOp,
     columnOps,
-    headerRow: parsed.headerRow + shift,
+    headerRow,
     newColumns,
     dropdowns:
       // A new layout of the stats block comes with a new look for the columns too.
@@ -357,6 +463,8 @@ export function planTending(
     cells: cells.map((c) => ({ ...c, row: c.row + shift })),
     stats: statsChanged ? block : null,
     columnCount: Math.max(order.length, ...block.map((r) => r.length)),
+    rowCount: lastRow,
+    tables: [signups, ...statsSheetTables()],
     values: final,
     changed: statsChanged || cells.length > 0,
   }
