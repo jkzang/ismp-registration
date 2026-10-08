@@ -160,7 +160,11 @@ async function sheetsFetch<T>(config: AppConfig, path: string, init: RequestInit
     return sheetsFetch(config, path, init, true)
   }
   if (res.status === 403 || res.status === 404) throw new NoAccessError('This app doesn’t have access to that spreadsheet yet.')
-  if (!res.ok) throw new Error(`Google Sheets returned an error (${res.status}).`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    const detail = body?.error?.message ? `: ${body.error.message}` : ''
+    throw new Error(`Google Sheets returned an error (${res.status})${detail}.`)
+  }
   return res.json()
 }
 
@@ -491,6 +495,11 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
       },
     )
   }
+  // The empty rows under the last sign-up go.
+  const rows = tab.rows + (op ? (op.kind === 'insert' ? op.count : -op.count) : 0)
+  if (rows > tending.rowCount) {
+    requests.push({ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: tending.rowCount, endIndex: rows } } })
+  }
   let columns = tab.columns
   for (const c of tending.columnOps) {
     if (c.kind === 'insert') {
@@ -520,28 +529,10 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
   for (const { column, options } of tending.dropdowns) {
     const range = { sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: column, endColumnIndex: column + 1 }
     requests.push({
-      // Centered, with a white edge, so each colored status sits in its cell like a chip.
       repeatCell: {
         range,
-        cell: {
-          userEnteredFormat: {
-            horizontalAlignment: 'CENTER',
-            verticalAlignment: 'MIDDLE',
-            wrapStrategy: 'CLIP',
-            borders: { top: CHIP_EDGE, bottom: CHIP_EDGE, left: CHIP_EDGE, right: CHIP_EDGE },
-          },
-        },
+        cell: { userEnteredFormat: { horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', wrapStrategy: 'CLIP' } },
         fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy,borders)',
-      },
-    })
-    requests.push({
-      setDataValidation: {
-        range,
-        rule: {
-          condition: { type: 'ONE_OF_LIST', values: options.map((o) => ({ userEnteredValue: o.label })) },
-          showCustomUi: true,
-          strict: false,
-        },
       },
     })
     for (const { label, swatch } of options) {
@@ -593,17 +584,116 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
       })),
     )
   }
-  if (requests.length === 0) return
+  if (requests.length) {
+    try {
+      await batchUpdate(config, spreadsheetId, requests)
+    } catch (err) {
+      if (err instanceof NoAccessError) throw new Error('You can view this spreadsheet but not edit it. Ask its owner for edit access.')
+      throw err
+    }
+  }
+  return applyTables(config, spreadsheetId, sheetId, tending)
+}
+
+const rgbStyle = (red: number, green: number, blue: number) => ({ rgbColor: { red, green, blue } })
+
+/**
+ * Makes the sign-ups and the stats' status tables Google Sheets tables, whose dropdown columns show
+ * as chips (a plain dropdown's chip look can't be set through the API), and keeps their ranges in
+ * step with the rows. Each table goes on its own, so one Google turns down doesn't hold up the rest;
+ * if the sign-ups can't be a table, their status columns get plain dropdowns instead. Returns why
+ * any couldn't, or null.
+ */
+async function applyTables(config: AppConfig, spreadsheetId: string, sheetId: number, tending: Tending): Promise<string | null> {
   try {
-    await batchUpdate(config, spreadsheetId, requests)
+    return await addTables(config, spreadsheetId, sheetId, tending)
   } catch (err) {
-    if (err instanceof NoAccessError) throw new Error('You can view this spreadsheet but not edit it. Ask its owner for edit access.')
-    throw err
+    return `Couldn’t make the dropdowns chips: ${errorMessage(err)}`
   }
 }
 
-// The title, the gap, the tables' names, their nine rows, and the empty row before the header.
-const STATS_ROW_HEIGHTS = [34, 10, 28, ...Array<number>(9).fill(24), 21]
+async function addTables(config: AppConfig, spreadsheetId: string, sheetId: number, tending: Tending): Promise<string | null> {
+  type Existing = { tableId: string; name: string; range: { startRowIndex?: number; endRowIndex?: number; startColumnIndex?: number; endColumnIndex?: number } }
+  const meta = await sheetsFetch<{ sheets: { properties: { sheetId: number }; tables?: Existing[] }[] }>(
+    config,
+    `${encodeURIComponent(spreadsheetId)}?fields=${encodeURIComponent('sheets(properties.sheetId,tables(tableId,name,range))')}`,
+  )
+  const existing = meta.sheets.find((s) => s.properties.sheetId === sheetId)?.tables ?? []
+  const problems: string[] = []
+  for (const spec of tending.tables) {
+    // Unique in the spreadsheet: the same tab can be imported twice, and other tabs have their own.
+    const name = `${spec.name}_${sheetId}`.replace(/[^A-Za-z0-9]+/g, '_')
+    const range = { sheetId, startRowIndex: spec.startRow, endRowIndex: spec.endRow, startColumnIndex: spec.startColumn, endColumnIndex: spec.endColumn }
+    const table = existing.find((t) => t.name === name)
+    const isSignups = spec === tending.tables[0]
+    try {
+      if (table) {
+        const r = table.range
+        const same =
+          r.startRowIndex === range.startRowIndex && r.endRowIndex === range.endRowIndex &&
+          (r.startColumnIndex ?? 0) === range.startColumnIndex && r.endColumnIndex === range.endColumnIndex
+        if (!same) await batchUpdate(config, spreadsheetId, [{ updateTable: { table: { tableId: table.tableId, range }, fields: 'range' } }])
+        continue
+      }
+      if (spec.endColumn <= spec.startColumn || spec.columnNames.some((n) => !n)) throw new Error('every column needs a header')
+      const dropdownAt = new Map(spec.dropdowns.map((d) => [d.index, d.options]))
+      await batchUpdate(config, spreadsheetId, [
+        // The plain dropdowns from before give way to the table's own.
+        ...spec.dropdowns.map((d) => ({
+          setDataValidation: {
+            range: { sheetId, startRowIndex: spec.startRow + 1, endRowIndex: spec.endRow, startColumnIndex: spec.startColumn + d.index, endColumnIndex: spec.startColumn + d.index + 1 },
+          },
+        })),
+        {
+          addTable: {
+            table: {
+              name,
+              range,
+              columnProperties: spec.columnNames.map((columnName, columnIndex) => {
+                const options = dropdownAt.get(columnIndex)
+                return {
+                  columnIndex,
+                  columnName,
+                  ...(options && {
+                    columnType: 'DROPDOWN',
+                    dataValidationRule: { condition: { type: 'ONE_OF_LIST', values: options.map((userEnteredValue) => ({ userEnteredValue })) } },
+                  }),
+                }
+              }),
+              rowsProperties: {
+                headerColorStyle: rgbStyle(0.2, 0.25, 0.33),
+                firstBandColorStyle: rgbStyle(1, 1, 1),
+                secondBandColorStyle: rgbStyle(0.97, 0.98, 0.99),
+              },
+            },
+          },
+        },
+      ])
+    } catch (err) {
+      problems.push(`${spec.name}: ${errorMessage(err)}`)
+      if (isSignups && tending.dropdowns.length) {
+        // Plain dropdowns, so the statuses can still be picked.
+        await batchUpdate(
+          config,
+          spreadsheetId,
+          tending.dropdowns.map(({ column, options }) => ({
+            setDataValidation: {
+              range: { sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: column, endColumnIndex: column + 1 },
+              rule: { condition: { type: 'ONE_OF_LIST', values: options.map((o) => ({ userEnteredValue: o.label })) }, showCustomUi: true, strict: false },
+            },
+          })),
+        ).catch(() => {})
+      }
+    }
+  }
+  return problems.length ? `Google didn’t make these into tables, so their dropdowns aren’t chips: ${problems.join('; ')}` : null
+}
+
+const errorMessage = (err: unknown) => (err instanceof Error && err.message ? err.message : 'unknown error')
+
+// The title, the gap, the tables' names, their nine rows (the first, with the expected attendance,
+// taller), and the two empty rows before the header.
+const STATS_ROW_HEIGHTS = [34, 10, 28, 36, ...Array<number>(8).fill(24), 21, 21]
 const INK = { red: 0.2, green: 0.25, blue: 0.33 }
 const MUTED = { red: 0.39, green: 0.45, blue: 0.55 }
 const WHITE = { red: 1, green: 1, blue: 1 }
@@ -614,7 +704,7 @@ const CHIP_EDGE = { style: 'SOLID_THICK', color: WHITE }
 
 /** One cell of the stats block, as Sheets' CellData. Each table is boxed, with a rule under each row. */
 function statCell({ text, style, last }: StatCell, column: number) {
-  const inTable = style === 'head' || style === 'name' || style === 'value'
+  const inTable = style === 'head' || style === 'name' || style === 'value' || style === 'big'
   // Tables are two columns wide, starting at A.
   const side = column % 2 === 0 ? 'left' : 'right'
   const background =
@@ -623,15 +713,16 @@ function statCell({ text, style, last }: StatCell, column: number) {
     ...(text && { userEnteredValue: { stringValue: text } }),
     userEnteredFormat: {
       verticalAlignment: 'MIDDLE',
-      horizontalAlignment: style === 'value' ? 'RIGHT' : 'LEFT',
+      horizontalAlignment: style === 'value' || (style === 'big' && side === 'right') ? 'RIGHT' : 'LEFT',
       wrapStrategy: style === 'heading' || style === 'head' ? 'OVERFLOW_CELL' : 'CLIP',
       padding: { left: 8, right: 8 },
       ...(background && { backgroundColor: background }),
       ...(inTable && { borders: { [side]: FRAME, bottom: last || style === 'head' ? FRAME : RULE } }),
       textFormat: {
-        foregroundColor: style === 'heading' || style === 'head' ? WHITE : style === 'value' ? INK : MUTED,
+        foregroundColor: style === 'heading' || style === 'head' ? WHITE : style === 'value' || style === 'big' ? INK : MUTED,
         bold: style !== 'name',
-        fontSize: style === 'heading' ? 13 : 10,
+        // The expected attendance stands out.
+        fontSize: style === 'heading' ? 13 : style === 'big' ? (side === 'right' ? 20 : 12) : 10,
       },
     },
   }

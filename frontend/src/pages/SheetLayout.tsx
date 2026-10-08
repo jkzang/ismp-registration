@@ -9,7 +9,7 @@ import { CheckIcon, CloseIcon, PencilIcon, RefreshIcon, WarningIcon } from '../c
 import { SheetViews } from '../components/SheetViews'
 import { getAccessToken, NeedsSignInError, NoAccessError, readTab, withSheetAccess } from '../google'
 import { toLocalInput } from '../localTime'
-import { describeResync, readForSync, resyncSheet } from '../resync'
+import { describeResync, readForSync, resyncSheet, turnoutOf } from '../resync'
 import { SheetContext, type SheetRead } from '../sheetContext'
 import { readContacts } from '../signupTracker'
 import { sheetName, signupsKey, type SeatingPlan, type Sheet } from '../types'
@@ -377,7 +377,13 @@ export function SheetLayout() {
       try {
         const run = () => readTab(config, current.spreadsheet_id, current.tab_id)
         if (!interactive) await getAccessToken(config, { interactive: false })
-        const data = await readForSync(config, current, interactive ? () => withSheetAccess(config, current.spreadsheet_id, run) : run)
+        const data = await readForSync(
+          config,
+          current,
+          interactive ? () => withSheetAccess(config, current.spreadsheet_id, run) : run,
+          // For the expected attendance in the sheet's stats.
+          turnoutOf(current, planRef.current),
+        )
         if (!data || sheetRef.current?.id !== current.id) return
         // A status written meanwhile may not be in this read; the next one has it.
         if (writes.current.running || writes.current.done !== before) return

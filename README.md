@@ -38,19 +38,23 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
 - **The app tends every imported sign-up tab** whenever it reads it (at import, every 30 seconds on
   a sheet's pages, and for every sheet when the app opens with Google already connected). It only
   fills blank cells, so anything typed in the sheet stays:
-  - Puts **Contact Status**, **New or Returning** and **Group Chat Status** in columns A, B and C
-    (adding them, or moving them there from wherever they were), and **Contacted At** after the
-    last column, as dropdowns colored like the app, each status centered with a white edge so it
-    sits in its cell like a chip. (The Sheets API can't choose the dropdown's display style; to get
-    Google's own chips, select columns A–C, open Data → Data validation, and set each rule's
-    Advanced options → Display style to *Chip*. The app leaves that alone afterwards.)
+  - Keeps the timestamp in column A and puts **Contact Status**, **New or Returning** and **Group
+    Chat Status** in B, C and D (adding them, or moving them there from wherever they were), and
+    **Contacted At** after the last column.
+  - Makes the sign-ups a Google Sheets **table**, so those three columns are single-select
+    dropdowns shown as chips (the API can't give a plain dropdown chips; only a table's dropdown
+    columns are), colored like the app. If Google won't make the table (say the range overlaps
+    another table), they're plain dropdowns instead and the Sign-ups page says why.
+  - Removes the empty rows under the last sign-up.
   - Fills blank Contact Status with *Not Contacted*.
   - Fills New or Returning by looking each person up in the spreadsheet's **Student Database** tab
     (by phone, then email, then name): found is *Returning*, otherwise *New*. Without that tab it's
     left blank.
-  - Fills Group Chat Status from the form's group chat question: *Yes!* (already in our group) is
-    *Already In Group*, *No - Please help me join!* is *Not Invited* (to be added), and *No thank
-    you, I don't want to be added* is *Doesn't Want To Join* (left alone). Without an answer it's
+  - Fills Group Chat Status from the form's "Are you already part of our WeChat/Line group chat?":
+    *Yes* (already in it, nothing to do) is *Already In Group*, *No - Please help me join!* is
+    *Not Invited* (to be added), and *No thank you, I don't want to be added* is *Doesn't Want To
+    Join* (left alone). A *Not Invited* left by the first version gives way to the answer, since
+    nobody sets it by hand for someone already in or not wanting in. Without an answer it's
     *Not Invited* (or *Added To WeChat/Line* where an older "Added to Group Chat" checkbox was
     ticked). The statuses, by stage: To Do (*Not Invited*), Pending (*WeChat Friend Request Sent*,
     *Line QR Shared*, *WeChat Group Invite Sent*), Complete (*Added To WeChat*, *Added To Line*,
@@ -59,9 +63,12 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
     it in the sheet is stamped the next time it's read); 48 hours later they're moved to
     *No Response*.
   - Keeps a **Sign-up statistics** block above the header, frozen with it and rewritten when the
-    numbers change: a title bar, then six boxed tables side by side, two columns each (Overview,
-    Contact status, Group chats, Gender & level, New vs returning, and when people signed up),
-    with counts and percentages, and an empty row between them and the sheet's header.
+    numbers change: a title bar with the expected attendance, then six boxed tables side by side,
+    two columns each: **Expected attendance** (worked out like the tables are planned: each
+    sign-up's show-up rate by status, plus walk-ins, against the capacity), Overview, Contact
+    status, Group chats, Gender & level, and New vs returning, with counts and percentages. The
+    Contact status and Group chats tables are Google Sheets tables too, so their statuses are
+    chips. Two empty rows separate the block from the sheet's header.
 
   None of these columns are sent to the server. The Sign-ups page sets Group Chat Status from a
   dropdown on each row, and the **Add to chats** filter lists the confirmed people who asked to be

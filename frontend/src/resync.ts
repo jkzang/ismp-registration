@@ -12,11 +12,11 @@
  */
 import { api, ApiError, errorMessage } from './api'
 import { applyTending, getAccessToken, readDatabaseTab, readTab, writeCells } from './google'
-import { planTending } from './sheetTending'
+import { planTending, type Turnout } from './sheetTending'
 import { importWarnings, type FieldMap } from './sheetParser'
 import { locateFieldMap } from './signupTracker'
 import { parseWithDatabase, type Fill } from './studentDatabase'
-import type { AppConfig, ResyncResult, Sheet } from './types'
+import type { AppConfig, ResyncResult, SeatingPlan, Sheet } from './types'
 
 export type TabData = Awaited<ReturnType<typeof readTab>> & {
   /** The sync ticket fetched just before the read. */
@@ -29,6 +29,15 @@ export type TabData = Awaited<ReturnType<typeof readTab>> & {
 
 type TabRef = { spreadsheet_id: string; tab_id: number; field_map: FieldMap }
 
+/** The expected attendance's inputs, from the sheet's plan, for the stats in the sheet. */
+export const turnoutOf = (sheet: Pick<Sheet, 'capacity'>, plan: SeatingPlan | null): Turnout | null =>
+  plan && {
+    show_up_rates: plan.show_up_rates,
+    walk_in_rate: plan.walk_in_rate,
+    checkedIn: new Set(plan.students.filter((s) => s.checked_in).map((s) => s.key)),
+    capacity: sheet.capacity,
+  }
+
 // One tend at a time per tab in this browser, each reading after the last one wrote, so two
 // pages reading at once can't both add the stats block.
 const tending = new Map<string, Promise<unknown>>()
@@ -37,7 +46,12 @@ const tending = new Map<string, Promise<unknown>>()
  * Reads the tab with `read` (null if that gives up) and tends it, returning the values as they are
  * once tended. A tab that can't be written to is still read; `tendError` says why.
  */
-export function readTended(config: AppConfig, sheet: TabRef, read: () => Promise<TabData | null>): Promise<TabData | null> {
+export function readTended(
+  config: AppConfig,
+  sheet: TabRef,
+  read: () => Promise<TabData | null>,
+  turnout: Turnout | null = null,
+): Promise<TabData | null> {
   const key = `${sheet.spreadsheet_id}/${sheet.tab_id}`
   const run = (tending.get(key) ?? Promise.resolve())
     .catch(() => {})
@@ -46,11 +60,12 @@ export function readTended(config: AppConfig, sheet: TabRef, read: () => Promise
       if (!data) return null
       const database = await readDatabaseTab(config, sheet.spreadsheet_id, data.tabs, sheet.tab_id)
       const tab = data.tabs.find((t) => t.id === sheet.tab_id)
-      const plan = planTending(data.values, sheet.field_map, database)
+      const plan = planTending(data.values, sheet.field_map, database, { turnout })
       if (!tab || !plan?.changed) return { ...data, database }
       try {
-        await applyTending(config, sheet.spreadsheet_id, tab, plan)
-        return { ...data, values: plan.values, database }
+        // Null, or why the dropdowns couldn't be made chips (the values are in either way).
+        const tableError = await applyTending(config, sheet.spreadsheet_id, tab, plan)
+        return { ...data, values: plan.values, database, ...(tableError && { tendError: tableError }) }
       } catch (err) {
         return { ...data, database, tendError: errorMessage(err, 'Couldn’t update the sheet.') }
       }
@@ -71,7 +86,8 @@ export async function tendSheets(config: AppConfig, sheets: Sheet[]) {
     return
   }
   for (const sheet of sheets) {
-    await readTended(config, sheet, () => readTab(config, sheet.spreadsheet_id, sheet.tab_id)).catch(() => {})
+    const plan = await api.getPlan(sheet.id).catch(() => null)
+    await readTended(config, sheet, () => readTab(config, sheet.spreadsheet_id, sheet.tab_id), turnoutOf(sheet, plan)).catch(() => {})
   }
 }
 export type Synced = { result: ResyncResult; fills: Fill[]; writeError: string | null }
@@ -83,9 +99,14 @@ const lastSent = new Map<number, string>()
  * Gets a sync ticket from the server, then reads and tends the tab with `read` (or null if that gives up), so
  * the server can turn away a send from this read if another device already sent a newer one.
  */
-export async function readForSync(config: AppConfig, sheet: Sheet, read: () => Promise<TabData | null>): Promise<TabData | null> {
+export async function readForSync(
+  config: AppConfig,
+  sheet: Sheet,
+  read: () => Promise<TabData | null>,
+  turnout: Turnout | null = null,
+): Promise<TabData | null> {
   const { ticket } = await api.syncTicket(sheet.id)
-  const data = await readTended(config, sheet, read)
+  const data = await readTended(config, sheet, read, turnout)
   return data && { ...data, readAt: ticket }
 }
 
