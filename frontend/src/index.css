@@ -3139,50 +3139,6 @@ button.overview-action:hover {
   background: var(--accent-fill-hover);
 }
 
-/* Group chat toggle on each sign-up: a fixed slot so the statuses line up. */
-.chat-slot {
-  display: flex;
-  justify-content: flex-end;
-  width: 118px;
-}
-
-button.chat-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-  color: var(--text-muted);
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--border);
-}
-
-button.chat-toggle svg {
-  width: 13px;
-  height: 13px;
-}
-
-button.chat-toggle.is-due {
-  color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent-fill);
-}
-
-button.chat-toggle.is-on {
-  color: var(--ok-text);
-  background: var(--ok-soft);
-  box-shadow: none;
-}
-
-@media (max-width: 900px) {
-  .chat-slot {
-    width: auto;
-    margin-right: auto;
-  }
-}
-
 @media (max-width: 900px) {
   .signups-page .sheet-head {
     flex-wrap: wrap;
@@ -3491,4 +3447,112 @@ button.chat-toggle.is-on {
   .signups-tools {
     margin-left: 0;
   }
+}
+
+/* New or returning, from the sheet's column: the chip beside a name and the overview's split bar. */
+:root {
+  --returning-new: #2563eb;
+  --returning-returning: #d97706;
+}
+
+.detail-chip.returning-new { background: #dbeafe; color: #1e40af; }
+.detail-chip.returning-returning { background: #ffedd5; color: #9a3412; }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --returning-new: #60a5fa;
+    --returning-returning: #fbbf24;
+  }
+
+  .detail-chip.returning-new { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
+  .detail-chip.returning-returning { background: rgba(217, 119, 6, 0.2); color: #fcd34d; }
+}
+
+.split-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+}
+
+.split-fill,
+.split-empty {
+  display: block;
+  min-width: 4px;
+  border-radius: 4px;
+}
+
+.split-empty {
+  flex: 1;
+  background: var(--hover-wash);
+}
+
+.split-fill.returning-new,
+.split-swatch.returning-new { background: var(--returning-new); }
+.split-fill.returning-returning,
+.split-swatch.returning-returning { background: var(--returning-returning); }
+
+.split-fill:hover {
+  opacity: 0.8;
+}
+
+.split-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.split-legend li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.split-swatch {
+  flex: none;
+  align-self: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.split-name {
+  font-weight: 600;
+}
+
+.split-count {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Group Chat Status, colored by stage like the sheet's column: to do, pending, complete, N/A. */
+.chat-todo { background: #fee2e2; color: #991b1b; }
+.chat-pending { background: #fef3c7; color: #92400e; }
+.chat-complete { background: #dcfce7; color: #166534; }
+.chat-na { background: #e5e7eb; color: #4b5563; }
+.chat-none { background: transparent; color: var(--text-muted); box-shadow: inset 0 0 0 1px var(--border); }
+
+@media (prefers-color-scheme: dark) {
+  .chat-todo { background: #7f1d1d; color: #fecaca; }
+  .chat-pending { background: #78350f; color: #fde68a; }
+  .chat-complete { background: #14532d; color: #bbf7d0; }
+  .chat-na { background: #374151; color: #d1d5db; }
+}
+
+.signups-list .status-select.chat-select {
+  width: 200px;
+}
+
+/* Confirmed, asked to join, and not in the chats yet. */
+.signups-list .chat-select.is-due {
+  box-shadow: 0 0 0 2px var(--accent-fill);
+}
+
+.signups-list .chat-select option,
+.signups-list .chat-select optgroup {
+  color: var(--text);
+  background: var(--bg);
 }

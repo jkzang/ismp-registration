@@ -3,6 +3,7 @@
  * being saved) and the plan. Turnout is estimated the way the tables are planned (seating.py): each
  * sign-up counts as their contact status's show-up rate, plus a share of walk-ins on top.
  */
+import { CHAT_STAGES, chatStageOf, needsChat } from './signupColumns'
 import type { Contact } from './signupTracker'
 import { CONTACT_STATUSES, type ContactStatus, type Gender, type Level, type SeatingPlan } from './types'
 
@@ -94,9 +95,20 @@ export function overviewOf(contacts: Contact[], plan: OverviewPlan) {
   const chats = {
     wanting: wanting.length,
     confirmed: wanting.filter((p) => p.status === 'confirmed').length,
-    added: people.filter((p) => p.chatAdded).length,
-    toAdd: wanting.filter((p) => p.status === 'confirmed' && !p.chatAdded).length,
+    added: people.filter((p) => p.groupChat && chatStageOf(p.groupChat) === 'complete').length,
+    toAdd: wanting.filter((p) => p.status === 'confirmed' && needsChat(p.groupChat)).length,
+    stages: CHAT_STAGES.map((s) => ({
+      ...s,
+      count: people.filter((p) => p.groupChat && chatStageOf(p.groupChat) === s.value).length,
+    })),
   }
+
+  // New and returning (from the sheet's New or Returning column), overall and among the confirmed.
+  const returning = (['new', 'returning', ''] as const).map((value) => ({
+    value,
+    count: people.filter((p) => p.returning === value).length,
+    confirmed: people.filter((p) => p.returning === value && p.status === 'confirmed').length,
+  }))
 
   return {
     total: people.length,
@@ -111,6 +123,7 @@ export function overviewOf(contacts: Contact[], plan: OverviewPlan) {
     referrals,
     noReferral,
     chats,
+    returning,
   }
 }
 

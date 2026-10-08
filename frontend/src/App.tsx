@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useNavigate } from 'react-router'
 import { api, errorMessage } from './api'
 import { AppContext } from './appContext'
@@ -6,6 +6,7 @@ import { ImportDialog, type ImportStart } from './components/ImportDialog'
 import { MenuIcon } from './components/icons'
 import { Sidebar } from './components/Sidebar'
 import { getAccessToken, pickSpreadsheet, signOutOfGoogle } from './google'
+import { tendSheets } from './resync'
 import { ChapterPage } from './pages/ChapterPage'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
@@ -64,6 +65,14 @@ export default function App() {
   useEffect(() => {
     if (inChapter) refreshSheets().catch(() => setSheets([]))
   }, [inChapter, refreshSheets])
+
+  // Once per opening of the app: Not Contacted, No Response after 48 hours and the stats, in every sheet.
+  const tended = useRef(false)
+  useEffect(() => {
+    if (!config || !sheets || tended.current) return
+    tended.current = true
+    tendSheets(config, sheets)
+  }, [config, sheets])
 
   // Straight from the click to Google (consent the first time, then the Picker) so the popup isn't blocked.
   async function startImport() {

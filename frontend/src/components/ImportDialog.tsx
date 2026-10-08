@@ -3,8 +3,9 @@ import { searchMentors } from '../absentMentors'
 import { api, errorMessage } from '../api'
 import { useApp } from '../appContext'
 import { checkInLayout, isCheckInTab } from '../checkInTab'
-import { getAccessToken, getSpreadsheet, getTabValues, pickSpreadsheet, readDatabaseTab, writeCells, writeCheckInTab, type PickedFile, type Tab } from '../google'
+import { getAccessToken, getSpreadsheet, getTabValues, pickSpreadsheet, writeCells, writeCheckInTab, type PickedFile, type Tab } from '../google'
 import { nextHour, toLocalInput } from '../localTime'
+import { readTended } from '../resync'
 import { importWarnings } from '../sheetParser'
 import { describeFills, parseWithDatabase } from '../studentDatabase'
 import { useUndo } from '../undo'
@@ -111,11 +112,15 @@ export function ImportDialog({ start, onClose, onImported }: {
 
   // Reads the tab and imports it as is: the header row and columns are found automatically.
   async function importTab(file: PickedFile, title: string, tabs: Tab[], tab: Tab, event: { starts_at: string; capacity: number; absent_mentor_ids: number[] }) {
-    setStages([`Reading “${tab.title}” from Google Sheets`])
-    const [values, database] = await Promise.all([
-      getTabValues(config, file.id, tab.title),
-      readDatabaseTab(config, file.id, tabs, tab.id),
-    ])
+    setStages([`Reading “${tab.title}” from Google Sheets and adding its status columns and statistics`])
+    // Adds Contact Status, New or Returning, Group Chat Status, Contacted At and the stats block.
+    const data = await readTended(config, { spreadsheet_id: file.id, tab_id: tab.id, field_map: {} }, async () => ({
+      spreadsheetTitle: title,
+      tabTitle: tab.title,
+      tabs,
+      values: await getTabValues(config, file.id, tab.title),
+    }))
+    const { values, database = null } = data!
     const { parsed, fills } = parseWithDatabase(values, database)
     if (parsed.rows.length === 0) throw new Error(`No sign-ups found in “${tab.title}”.`)
     // The import doesn't depend on this; a sheet that can't be edited still imports the filled values.
@@ -159,7 +164,8 @@ export function ImportDialog({ start, onClose, onImported }: {
         : writeError
           ? `${imported}, but the ${fills.length} values from the Student Database weren’t written to the sheet: ${writeError}`
           : `${imported} · filled ${fills.length} blank cells in the sheet from the Student Database (${describeFills(fills)})`) +
-        (tabError ? ` · the check-in tab wasn’t added: ${tabError}` : ''),
+        (tabError ? ` · the check-in tab wasn’t added: ${tabError}` : '') +
+        (data!.tendError ? ` · the status columns and statistics weren’t added to the sheet: ${data!.tendError}` : ''),
     )
     onImported(sheet, plan)
   }

@@ -4,6 +4,7 @@
  * the browser. None of those leave this tab's memory or reach the server.
  */
 import { parseSheet, statusOf, type ContactStatus, type FieldMap, type ParseResult, type SignupRow } from './sheetParser'
+import { addedColumns, groupChatOf, returningOf, titleCase, type GroupChatStatus, type Returning } from './signupColumns'
 import { CONTACT_STATUSES } from './types'
 
 export type Contact = SignupRow & {
@@ -17,8 +18,16 @@ export type Contact = SignupRow & {
   socials: { label: string; id: string }[]
   /** Said they'd like to join the group chats (or, without that question, gave an ID). */
   wantsChat: boolean
-  /** Ticked in the "Added to Group Chat" column. */
-  chatAdded: boolean
+  /** Answered no to joining the group chats. */
+  declinedChat: boolean
+  /** Ticked in an older sheet's "Added to Group Chat" checkbox column. */
+  chatTicked: boolean
+  /** The Group Chat Status column; null when blank or unrecognized. */
+  groupChat: GroupChatStatus | null
+  /** The New or Returning column. */
+  returning: Returning | ''
+  /** The Contacted At cell as the sheet shows it. */
+  contactedAt: string
   /** How they heard about the event, as answered. */
   referral: string
   /** Their other answers on the form, labeled by header, for the person view. */
@@ -33,13 +42,18 @@ const JOIN_CHAT = /\b(join|want|like|interested)\b.*\b(group|chats?|community)\b
 const REFERRAL = /\b(hear|heard|find out|found out|learn about|learned about|referr\w*|referral)\b/
 const SOCIAL = /\b(wechat|we chat|instagram|insta|ig|line|whatsapp|kakao\w*|telegram|discord|facebook|messenger|snapchat|social)\b/
 
-/** Columns of the extra questions, by header. Used columns (name, phone and so on) are skipped. */
+/**
+ * Columns of the extra questions, by header, and the columns the app adds to the tab (see
+ * signupColumns.ts). Used columns (name, phone and so on) are skipped.
+ */
 export function extraColumns(headers: string[], used: Set<number>) {
   const find = (pattern: RegExp, taken: Set<number>) => {
     const index = headers.findIndex((h, i) => !taken.has(i) && pattern.test(words(h)))
     return index === -1 ? undefined : index
   }
-  const taken = new Set(used)
+  const added = addedColumns(headers)
+  // "Group Chat Status" would pass for the join question otherwise.
+  const taken = new Set([...used, ...Object.values(added).filter((i) => i !== undefined)])
   const chatAdded = find(CHAT_ADDED, taken)
   if (chatAdded !== undefined) taken.add(chatAdded)
   const referral = find(REFERRAL, taken)
@@ -49,12 +63,13 @@ export function extraColumns(headers: string[], used: Set<number>) {
   const joinChat = headers.findIndex((h, i) => !taken.has(i) && JOIN_CHAT.test(words(h)) && !/\b(id|username|handle)\b/.test(words(h)))
   if (joinChat !== -1) taken.add(joinChat)
   const social = headers.flatMap((h, i) => (!taken.has(i) && SOCIAL.test(words(h)) ? [i] : []))
-  return { chatAdded, referral, joinChat: joinChat === -1 ? undefined : joinChat, social }
+  return { ...added, chatAdded, referral, joinChat: joinChat === -1 ? undefined : joinChat, social }
 }
 
 const NO_ANSWER = /^(n ?a|none|no|nil|null|nope|-+|\.)?$/
 const YES = /^(y|yes|yeah|yep|sure|ok|okay|definitely|of course|absolutely)\b/
-/** A checkbox (or a typed yes) in the "Added to Group Chat" column. */
+const NO = /^(n|no|nope|nah|not|no thanks?)\b/
+/** A checkbox (or a typed yes) in an older sheet's "Added to Group Chat" column. */
 export const isTicked = (text: string) => /^(true|yes|y|added|done|x|✓|✔)$/i.test(text.trim())
 
 /** The saved columns, but looking again for the ones only located (an import may predate them). */
@@ -74,7 +89,16 @@ export function readContacts(values: string[][], fieldMap: FieldMap) {
   const { columns } = parsed
   const extra = extraColumns(parsed.headers, new Set(Object.values(columns)))
   // Everything not shown some other way.
-  const shownColumns = new Set([...Object.values(columns), extra.chatAdded, extra.referral, extra.joinChat, ...extra.social])
+  const shownColumns = new Set([
+    ...Object.values(columns),
+    extra.chatAdded,
+    extra.referral,
+    extra.joinChat,
+    extra.returning,
+    extra.groupChat,
+    extra.contactedAt,
+    ...extra.social,
+  ])
   const answerColumns = parsed.headers.flatMap((h, i) => (h.trim() && !shownColumns.has(i) ? [i] : []))
   const contacts: Contact[] = parsed.rows.map((row, i) => {
     const index = parsed.rowIndexes[i]
@@ -91,7 +115,11 @@ export function readContacts(values: string[][], fieldMap: FieldMap) {
       signedUp: cellOf(values, index, columns.timestamp),
       socials,
       wantsChat: extra.joinChat !== undefined ? YES.test(join) : socials.length > 0,
-      chatAdded: isTicked(cellOf(values, index, extra.chatAdded)),
+      declinedChat: extra.joinChat !== undefined && NO.test(join),
+      chatTicked: isTicked(cellOf(values, index, extra.chatAdded)),
+      groupChat: groupChatOf(cellOf(values, index, extra.groupChat)),
+      returning: returningOf(cellOf(values, index, extra.returning)),
+      contactedAt: cellOf(values, index, extra.contactedAt),
       referral: cellOf(values, index, extra.referral),
       answers: answerColumns.flatMap((column) => {
         const value = cellOf(values, index, column)
@@ -105,7 +133,8 @@ export function readContacts(values: string[][], fieldMap: FieldMap) {
       status: columns.status !== undefined,
       phone: columns.phone !== undefined,
       email: columns.email !== undefined,
-      chatAdded: extra.chatAdded !== undefined,
+      groupChat: extra.groupChat !== undefined,
+      returning: extra.returning !== undefined,
       // Some way to tell who wants to join.
       chat: extra.joinChat !== undefined || extra.social.length > 0,
       referral: extra.referral !== undefined,
@@ -113,7 +142,7 @@ export function readContacts(values: string[][], fieldMap: FieldMap) {
   }
 }
 
-/** How the sheet already spells `status` (its dropdown may say "Awaiting Response"), else the app's label. */
+/** How the sheet already spells `status` (its dropdown may say "Awaiting Response"), else as the app's dropdown does. */
 export function statusText(values: string[][], parsed: ParseResult, status: ContactStatus) {
   const column = parsed.columns.status
   if (column !== undefined) {
@@ -122,7 +151,7 @@ export function statusText(values: string[][], parsed: ParseResult, status: Cont
       if (text && statusOf(text) === status) return text
     }
   }
-  return CONTACT_STATUSES.find((s) => s.value === status)!.label
+  return titleCase(CONTACT_STATUSES.find((s) => s.value === status)!.label)
 }
 
 /** Who's left to reach, who's been reached, who's coming, and who isn't. */

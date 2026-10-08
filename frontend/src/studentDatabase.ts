@@ -61,7 +61,11 @@ function readDatabase(values: string[][]): Entry[] {
  * The fills for `signups` (a parsed sign-up tab and its values) from the database tab's values,
  * and the sign-up values with them applied, ready to parse again.
  */
-export function fillFromDatabase(signupValues: string[][], signups: ParseResult, databaseValues: string[][]) {
+/**
+ * Finds each sign-up (by its index in `signups.rows`) in the database tab's values: by phone, then
+ * email, then name when only one person in the database has it. Null when they aren't in it.
+ */
+export function databaseMatcher(signupValues: string[][], signups: ParseResult, databaseValues: string[][]) {
   const records = readDatabase(databaseValues)
   const byPhone = new Map<string, Entry>()
   const byEmail = new Map<string, Entry>()
@@ -72,16 +76,23 @@ export function fillFromDatabase(signupValues: string[][], signups: ParseResult,
     // Two people with the same name: neither can be matched by name.
     if (r.name) byName.set(r.name, byName.has(r.name) ? null : r)
   }
+  const { columns } = signups
+  return (i: number): Entry | null => {
+    const row = signups.rowIndexes[i]
+    const phone = phoneKey(cellOf(signupValues, row, columns.phone))
+    const email = emailKey(cellOf(signupValues, row, columns.email))
+    return (phone && byPhone.get(phone)) || (email && byEmail.get(email)) || byName.get(nameKey(signups.rows[i].name)) || null
+  }
+}
 
+export function fillFromDatabase(signupValues: string[][], signups: ParseResult, databaseValues: string[][]) {
+  const matchOf = databaseMatcher(signupValues, signups, databaseValues)
   const { columns } = signups
   const fills: Fill[] = []
   signups.rowIndexes.forEach((row, i) => {
     const blank = FILLED_FIELDS.filter((f) => columns[f] !== undefined && !cellOf(signupValues, row, columns[f]))
     if (blank.length === 0) return
-    const phone = phoneKey(cellOf(signupValues, row, columns.phone))
-    const email = emailKey(cellOf(signupValues, row, columns.email))
-    const match =
-      (phone && byPhone.get(phone)) || (email && byEmail.get(email)) || byName.get(nameKey(signups.rows[i].name)) || null
+    const match = matchOf(i)
     if (!match) return
     for (const field of blank) {
       const text = match.values[field]

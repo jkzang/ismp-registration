@@ -7,7 +7,9 @@
  */
 import { checkInTabTitle, type CheckInLayout } from './checkInTab'
 import { parseSheet, type ContactStatus, type FieldMap } from './sheetParser'
-import { extraColumns, isTicked, locateFieldMap, statusText } from './signupTracker'
+import { formatStamp, groupChatLabel, groupChatOf, type GroupChatStatus } from './signupColumns'
+import { STATS_ROWS, type Tending } from './sheetTending'
+import { extraColumns, locateFieldMap, statusText } from './signupTracker'
 import { isDatabaseTab } from './studentDatabase'
 import { CONTACT_STATUSES, type AppConfig } from './types'
 
@@ -178,20 +180,28 @@ export async function withSheetAccess<T>(config: AppConfig, spreadsheetId: strin
   }
 }
 
-export type Tab = { id: number; title: string; rows: number }
+/** `columns` is the tab's grid width, which can be more than its values show. */
+export type Tab = { id: number; title: string; rows: number; columns: number }
 
 export async function getSpreadsheet(config: AppConfig, spreadsheetId: string): Promise<{ title: string; tabs: Tab[] }> {
   type Meta = {
     properties: { title: string }
-    sheets: { properties: { sheetId: number; title: string; hidden?: boolean; gridProperties?: { rowCount?: number } } }[]
+    sheets: {
+      properties: { sheetId: number; title: string; hidden?: boolean; gridProperties?: { rowCount?: number; columnCount?: number } }
+    }[]
   }
-  const fields = 'properties.title,sheets.properties(sheetId,title,hidden,gridProperties.rowCount)'
+  const fields = 'properties.title,sheets.properties(sheetId,title,hidden,gridProperties(rowCount,columnCount))'
   const meta = await sheetsFetch<Meta>(config, `${encodeURIComponent(spreadsheetId)}?fields=${encodeURIComponent(fields)}`)
   return {
     title: meta.properties.title,
     tabs: meta.sheets
       .filter((s) => !s.properties.hidden)
-      .map((s) => ({ id: s.properties.sheetId, title: s.properties.title, rows: s.properties.gridProperties?.rowCount ?? 0 })),
+      .map((s) => ({
+        id: s.properties.sheetId,
+        title: s.properties.title,
+        rows: s.properties.gridProperties?.rowCount ?? 0,
+        columns: s.properties.gridProperties?.columnCount ?? 0,
+      })),
   }
 }
 
@@ -320,47 +330,40 @@ export async function writeStatus(
   if (i === -1) throw new Error('That sign-up is no longer in the sheet, or their name or timestamp changed. Refresh and try again.')
   const now = parsed.rows[i].status
   if (expected !== undefined && now !== expected && now !== status) throw new StatusChangedError(parsed.rows[i].name, now)
+  const row = parsed.rowIndexes[i]
+  // Reaching out starts the 48 hours to No Response over (see sheetTending.ts).
+  const contactedAt = extraColumns(parsed.headers, new Set(Object.values(parsed.columns))).contactedAt
   await writeCells(config, sheet.spreadsheet_id, tabTitle, [
-    { row: parsed.rowIndexes[i], column, text: statusText(values, parsed, status) },
+    { row, column, text: statusText(values, parsed, status) },
+    ...(status === 'awaiting_response' && contactedAt !== undefined ? [{ row, column: contactedAt, text: formatStamp(new Date()) }] : []),
   ])
 }
 
 export class NoChatColumnError extends Error {}
 
 /**
- * Ticks or clears one sign-up's "Added to Group Chat" box (`key` is their row's key), finding their
- * row again like writeStatus. With `expected` (undo and redo), only if the box still shows that.
+ * Sets one sign-up's Group Chat Status (`key` is their row's key), finding their row again like
+ * writeStatus. With `expected` (undo and redo), only if the cell still shows that.
  */
-export async function writeChatAdded(
+export async function writeGroupChat(
   config: AppConfig,
   sheet: { spreadsheet_id: string; tab_id: number; field_map: FieldMap },
   key: string,
-  added: boolean,
-  expected?: boolean,
+  status: GroupChatStatus,
+  expected?: GroupChatStatus | null,
 ) {
   const { tabTitle, values } = await readTab(config, sheet.spreadsheet_id, sheet.tab_id)
   const parsed = parseSheet(values, { fieldMap: locateFieldMap(sheet.field_map) })
-  const column = extraColumns(parsed.headers, new Set(Object.values(parsed.columns))).chatAdded
-  if (column === undefined) {
-    throw new NoChatColumnError('No group chat column found. Add a checkbox column named “Added to Group Chat” to the sheet.')
-  }
+  const column = extraColumns(parsed.headers, new Set(Object.values(parsed.columns))).groupChat
+  if (column === undefined) throw new NoChatColumnError('No Group Chat Status column found. Refresh to add it to the sheet.')
   const i = parsed.rows.findIndex((row) => row.key === key)
   if (i === -1) throw new Error('That sign-up is no longer in the sheet, or their name or timestamp changed. Refresh and try again.')
   const row = parsed.rowIndexes[i]
-  const now = isTicked(values[row]?.[column] ?? '')
-  if (expected !== undefined && now !== expected && now !== added) {
-    throw new Error(`Someone else ${now ? 'ticked' : 'cleared'} ${parsed.rows[i].name}’s group chat box since, so it was left as is.`)
+  const now = groupChatOf(values[row]?.[column] ?? '')
+  if (expected !== undefined && now !== expected && now !== status) {
+    throw new Error(`Someone else changed ${parsed.rows[i].name}’s group chat status since, so it was left as is.`)
   }
-  const tab = `'${tabTitle.replace(/'/g, "''")}'`
-  try {
-    await sheetsFetch(config, `${encodeURIComponent(sheet.spreadsheet_id)}/values:batchUpdate`, {
-      method: 'POST',
-      body: JSON.stringify({ valueInputOption: 'RAW', data: [{ range: `${tab}!${columnLetter(column)}${row + 1}`, values: [[added]] }] }),
-    })
-  } catch (err) {
-    if (err instanceof NoAccessError) throw new Error('You can view this spreadsheet but not edit it. Ask its owner for edit access.')
-    throw err
-  }
+  await writeCells(config, sheet.spreadsheet_id, tabTitle, [{ row, column, text: groupChatLabel(status) }])
 }
 
 type TabProperties = { sheetId: number; title: string; index: number }
@@ -443,6 +446,106 @@ export async function writeCheckInTab(
     ])
   } catch (err) {
     // It could be read, so this is Google's own sharing: view-only.
+    if (err instanceof NoAccessError) throw new Error('You can view this spreadsheet but not edit it. Ask its owner for edit access.')
+    throw err
+  }
+}
+
+/**
+ * Writes what planTending worked out into the sign-up tab, in one request so it all lands together:
+ * the rows for the stats block, the new columns with their dropdowns and colors, the filled cells
+ * and the stats.
+ */
+export async function applyTending(config: AppConfig, spreadsheetId: string, tab: Tab, tending: Tending) {
+  const sheetId = tab.id
+  const requests: unknown[] = []
+  if (tending.insertStats) {
+    requests.push(
+      { insertDimension: { range: { sheetId, dimension: 'ROWS', startIndex: 0, endIndex: STATS_ROWS }, inheritFromBefore: false } },
+      // The stats and the header stay in view.
+      {
+        updateSheetProperties: {
+          properties: { sheetId, gridProperties: { frozenRowCount: tending.headerRow + 1 } },
+          fields: 'gridProperties.frozenRowCount',
+        },
+      },
+    )
+  }
+  if (tending.columnCount > tab.columns) {
+    requests.push({ appendDimension: { sheetId, dimension: 'COLUMNS', length: tending.columnCount - tab.columns } })
+  }
+  for (const { column, options } of tending.newColumns) {
+    const range = { sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: column, endColumnIndex: column + 1 }
+    requests.push({
+      updateDimensionProperties: {
+        range: { sheetId, dimension: 'COLUMNS', startIndex: column, endIndex: column + 1 },
+        properties: { pixelSize: 190 },
+        fields: 'pixelSize',
+      },
+    })
+    if (options.length === 0) continue
+    requests.push({
+      setDataValidation: {
+        range,
+        rule: {
+          condition: { type: 'ONE_OF_LIST', values: options.map((o) => ({ userEnteredValue: o.label })) },
+          showCustomUi: true,
+          strict: false,
+        },
+      },
+    })
+    for (const { label, swatch } of options) {
+      requests.push({
+        addConditionalFormatRule: {
+          index: 0,
+          rule: {
+            ranges: [range],
+            booleanRule: {
+              condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: label }] },
+              format: { backgroundColor: swatch.background, textFormat: { foregroundColor: swatch.text, bold: true } },
+            },
+          },
+        },
+      })
+    }
+  }
+  for (const { row, column, text } of tending.cells) {
+    requests.push({
+      updateCells: {
+        start: { sheetId, rowIndex: row, columnIndex: column },
+        rows: [{ values: [{ userEnteredValue: { stringValue: text } }] }],
+        fields: 'userEnteredValue',
+      },
+    })
+  }
+  if (tending.stats) {
+    requests.push({
+      updateCells: {
+        // The whole width, so a shorter line clears what the last one left.
+        range: { sheetId, startRowIndex: 0, endRowIndex: STATS_ROWS, startColumnIndex: 0, endColumnIndex: Math.max(tending.columnCount, tab.columns) },
+        rows: tending.stats.map((row, r) => ({
+          values: row.map((c) => ({
+            userEnteredValue: { stringValue: c.text },
+            userEnteredFormat: {
+              verticalAlignment: 'MIDDLE',
+              wrapStrategy: 'OVERFLOW_CELL',
+              ...(c.swatch && { backgroundColor: c.swatch.background, horizontalAlignment: 'CENTER' }),
+              textFormat: {
+                bold: !!c.bold || !!c.swatch,
+                fontSize: r === 0 ? 12 : 10,
+                ...(c.swatch && { foregroundColor: c.swatch.text }),
+              },
+            },
+          })),
+        })),
+        fields: 'userEnteredValue,userEnteredFormat',
+      },
+    })
+  }
+  if (requests.length === 0) return
+  try {
+    await batchUpdate(config, spreadsheetId, requests)
+  } catch (err) {
     if (err instanceof NoAccessError) throw new Error('You can view this spreadsheet but not edit it. Ask its owner for edit access.')
     throw err
   }

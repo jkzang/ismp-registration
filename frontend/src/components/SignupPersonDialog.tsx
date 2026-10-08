@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { groupChatLabel, RETURNING_LABELS, type GroupChatStatus } from '../signupColumns'
 import { dialable, mailtoHref, shortTimestamp, smsHref, socialLabel, telHref, type Contact } from '../signupTracker'
 import { CONTACT_STATUSES, type ContactStatus } from '../types'
 import { CloseIcon, MailIcon, MessageIcon, PhoneIcon } from './icons'
@@ -6,12 +7,13 @@ import { CloseIcon, MailIcon, MessageIcon, PhoneIcon } from './icons'
 export const GENDER_LABELS = { female: 'Girl', male: 'Guy' } as const
 export const LEVEL_LABELS = { undergrad: 'Undergrad', grad: 'Grad', other: 'Not a student' } as const
 
-/** Gender and enrollment as colored chips. */
-export function DetailChips({ contact }: { contact: Pick<Contact, 'gender' | 'level'> }) {
+/** Gender, enrollment and new or returning as colored chips. */
+export function DetailChips({ contact }: { contact: Pick<Contact, 'gender' | 'level' | 'returning'> }) {
   return (
     <>
       {contact.gender && <span className={`detail-chip gender-${contact.gender}`}>{GENDER_LABELS[contact.gender]}</span>}
       {contact.level && <span className={`detail-chip level-${contact.level}`}>{LEVEL_LABELS[contact.level]}</span>}
+      {contact.returning && <span className={`detail-chip returning-${contact.returning}`}>{RETURNING_LABELS[contact.returning]}</span>}
     </>
   )
 }
@@ -29,10 +31,10 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
  * Everything someone put on the form, opened from their name on the Sign-ups page. Texting,
  * calling or emailing from here counts as reaching out, as it does from the list.
  */
-export function SignupPersonDialog({ contact, status, chatAdded, event, message, onContacted, onClose }: {
+export function SignupPersonDialog({ contact, status, groupChat, event, message, onContacted, onClose }: {
   contact: Contact | null
   status: ContactStatus
-  chatAdded: boolean
+  groupChat: GroupChatStatus | null
   event: string
   message: string
   onContacted: (contact: Contact) => void
@@ -104,8 +106,9 @@ export function SignupPersonDialog({ contact, status, chatAdded, event, message,
                   {s.id}
                 </Field>
               ))}
-              {(contact.wantsChat || chatAdded) && (
-                <Field label="Group chats">{chatAdded ? 'Added' : 'Wants to join'}</Field>
+              {contact.contactedAt && <Field label="Contacted">{shortTimestamp(contact.contactedAt)}</Field>}
+              {(groupChat || contact.wantsChat) && (
+                <Field label="Group chats">{groupChat ? groupChatLabel(groupChat) : 'Wants to join'}</Field>
               )}
               {contact.referral && <Field label="Heard about it">{contact.referral}</Field>}
               {contact.answers.map((a) => (
