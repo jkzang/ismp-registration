@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseSheet } from './sheetParser'
-import { dialable, fillMessage, mailtoHref, readContacts, smsHref, statusText } from './signupTracker'
+import { dialable, fillMessage, mailtoHref, readContacts, signedUpWithin, smsHref, statusText } from './signupTracker'
 
 const values = [
   ['Timestamp', 'First & Last Name', 'Nickname', 'Phone Number', 'Email', 'Contact Status'],
@@ -51,5 +51,23 @@ describe('contact links', () => {
   it('builds sms and mailto links', () => {
     expect(smsHref('858-555-0100', 'Hi & bye')).toBe('sms:8585550100?&body=Hi%20%26%20bye')
     expect(mailtoHref('amy@ucsd.edu', 'Kickoff', 'Hi Amy')).toBe('mailto:amy@ucsd.edu?subject=Kickoff&body=Hi%20Amy')
+  })
+})
+
+describe('signedUpWithin', () => {
+  const now = new Date('2026-10-08T12:00:00').getTime()
+
+  it('matches sign-ups by how long ago they were', () => {
+    expect(signedUpWithin('10/8/2026 9:00:00', 'day', now)).toBe(true)
+    expect(signedUpWithin('10/6/2026 9:00:00', 'day', now)).toBe(false)
+    expect(signedUpWithin('10/6/2026 9:00:00', '3days', now)).toBe(true)
+    expect(signedUpWithin('10/2/2026 9:00:00', 'week', now)).toBe(true)
+    expect(signedUpWithin('10/2/2026 9:00:00', 'older', now)).toBe(false)
+    expect(signedUpWithin('9/20/2026 9:00:00', 'older', now)).toBe(true)
+  })
+
+  it('only lets an unreadable timestamp through with no time filter', () => {
+    expect(signedUpWithin('', 'any', now)).toBe(true)
+    expect(signedUpWithin('sometime', 'week', now)).toBe(false)
   })
 })

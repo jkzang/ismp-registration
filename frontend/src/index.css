@@ -3234,6 +3234,58 @@ button.chat-toggle.is-on {
   flex: 1 1 100%;
 }
 
+/* Time, gender and enrollment filters, on their own line under the search. */
+.signups-filters {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+}
+
+.signups-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.signups-filter select {
+  width: auto;
+  padding: 5px 10px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.signups-filter .segmented button {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+/* Gender and enrollment beside each sign-up's name. */
+.detail-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.detail-chip.gender-female { background: var(--grp-female-soft); color: var(--grp-female); }
+.detail-chip.gender-male { background: var(--grp-male-soft); color: var(--grp-male); }
+.detail-chip.level-undergrad { background: #ccfbf1; color: #115e59; }
+.detail-chip.level-grad { background: #ede9fe; color: #5b21b6; }
+.detail-chip.level-other { background: var(--grp-none-soft); color: var(--grp-none); }
+
+@media (prefers-color-scheme: dark) {
+  .detail-chip.level-undergrad { background: rgba(20, 184, 166, 0.16); color: #5eead4; }
+  .detail-chip.level-grad { background: rgba(139, 92, 246, 0.18); color: #c4b5fd; }
+}
+
 /* The overview, in a large modal. */
 .overview-dialog {
   width: min(1120px, calc(100vw / var(--ui-scale) - 32px));
