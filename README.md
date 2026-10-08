@@ -41,12 +41,10 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   - Keeps the timestamp in column A and puts **Contact Status**, **New or Returning** and **Group
     Chat Status** in B, C and D (adding them, or moving them there from wherever they were), and
     **Contacted At** after the last column.
-  - Gives those three columns single-select dropdowns, colored like the app, shown as chips. The
-    API can't set a plain dropdown's display style, so the app makes a Google Sheets table with
-    that dropdown on a hidden scratch tab, pastes its rule over the column (a pasted rule keeps its
-    chip style), and deletes the scratch tab, all in one request. If Google turns that down they
-    fall back to arrow dropdowns; Data → Data validation → Advanced options → Display style:
-    *Chip* switches them by hand. The dropdowns are only set again by a new layout or version.
+  - Gives those three columns single-select dropdowns, colored like the app. The Sheets API can't
+    choose a dropdown's display style, so they show as arrows; Data → Data validation → Advanced
+    options → Display style: *Chip* switches them by hand, and the app leaves that alone (it only
+    sets the dropdowns again for a new layout or version).
   - Removes the empty rows under the last sign-up.
   - Fills blank Contact Status with *Not Contacted*.
   - Fills New or Returning by looking each person up in the spreadsheet's **Student Database** tab
