@@ -86,14 +86,8 @@ describe('planTending on a fresh form tab', () => {
     expect(statsRowsIn(plan.values, plan.headerRow)).toBe(STATS_ROWS)
   })
 
-  it('makes the sign-ups and the status tables into Sheets tables, and drops the empty rows below', () => {
+  it('drops the empty rows below the last sign-up', () => {
     expect(plan.rowCount).toBe(STATS_ROWS + 4)
-    const [signups, contact, chats] = plan.tables
-    expect(signups).toMatchObject({ startRow: STATS_ROWS, endRow: STATS_ROWS + 4, startColumn: 0, endColumn: 11 })
-    expect(signups.dropdowns.map((d) => d.index)).toEqual([1, 2, 3])
-    expect(signups.columnNames.slice(0, 4)).toEqual(['Timestamp', 'Contact Status', 'New or Returning', 'Group Chat Status'])
-    expect(contact).toMatchObject({ startRow: 2, endRow: 12, startColumn: 4, endColumn: 6, columnNames: ['Contact status', 'Count'] })
-    expect(chats).toMatchObject({ startRow: 2, endRow: 11, startColumn: 6, endColumn: 8 })
   })
 
   it('shows a dash without a plan to estimate from', () => {
@@ -160,12 +154,34 @@ describe('tabs tended by earlier versions', () => {
       ['Not Invited', 'New', 'Not Invited', '10/1/2026 9:00:00', 'Amy', 'Yes', ''],
     ]
     expect(statsRowsIn(values, 13)).toBe(13)
-    const plan = planTending(values, {}, null, { now: NOW })!
+    const plan = planTending(values, {}, null, { now: NOW, version: 0 })!
     expect(plan.rowOp).toEqual({ kind: 'insert', at: 13, count: 1 })
+    expect(plan.setVersion).toBe(true)
     expect(plan.columnOps).toEqual([{ kind: 'move', from: 3, to: 0 }])
     expect(plan.values[STATS_ROWS]).toEqual(['Timestamp', 'Contact Status', 'New or Returning', 'Group Chat Status', 'Name', QUESTION, 'Contacted At'])
     // The first version's Not Invited gives way to the answer: Yes is Already In Group.
     expect(plan.values[STATS_ROWS + 1]).toEqual(['10/1/2026 9:00:00', 'Not Invited', 'New', 'Already In Group', 'Amy', 'Yes'])
+  })
+})
+
+describe('group chat statuses the first version got wrong', () => {
+  const header = ['Timestamp', 'Contact Status', 'New or Returning', 'Group Chat Status', 'Name', QUESTION]
+  const values = [
+    header,
+    ['1', 'Not Contacted', 'New', "Doesn't Want To Join", 'Amy', 'No - Please help me join!'],
+    ['2', 'Not Contacted', 'New', 'Not Invited', 'Ben', 'Yes'],
+    ['3', 'Not Contacted', 'New', "Doesn't Want To Join", 'Cat', 'No thank you, I don’t want to be added'],
+    ['4', 'Not Contacted', 'New', 'Added To WeChat', 'Dee', 'No - Please help me join!'],
+  ]
+  const chats = (version: number) =>
+    readContacts(planTending(values, {}, null, { now: NOW, version })!.values, {}).contacts.map((c) => c.groupChat)
+
+  it('are put right once, catching up from an earlier version', () => {
+    expect(chats(1)).toEqual(['not_invited', 'already_in', 'declined', 'added_wechat'])
+  })
+
+  it('are left alone after that, so a volunteer’s change stays', () => {
+    expect(chats(2)).toEqual(['declined', 'not_invited', 'declined', 'added_wechat'])
   })
 })
 

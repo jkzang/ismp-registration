@@ -47,7 +47,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     const messages = flattenErrors(body)
-    throw new ApiError(messages.length ? messages.join(' ') : res.statusText, res.status)
+    // Said as the app's own server, so it isn't mistaken for Google's.
+    const fallback = res.status >= 500 ? `The ISMP Registration server had a problem (${res.status}). Try again in a minute.` : res.statusText
+    throw new ApiError(messages.length ? messages.join(' ') : fallback, res.status)
   }
   if (res.status === 204) return undefined as T
   return res.json()

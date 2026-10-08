@@ -59,20 +59,11 @@ export type Turnout = Pick<SeatingPlan, 'show_up_rates' | 'walk_in_rate'> & {
 }
 
 /**
- * A range to make a Google Sheets table, so its dropdown columns show as chips (the only way the
- * API can). The sign-ups are one, and so are the stats' status tables. Names get the tab's id.
+ * Bumped when a new version of the app has to redo what an earlier one wrote: the columns' dropdowns
+ * and colors are set again, and the group chat statuses the first version got wrong are corrected.
+ * The version a tab was last tended with is kept in the tab's developer metadata (invisible).
  */
-export type SheetTable = {
-  name: string
-  startRow: number
-  endRow: number
-  startColumn: number
-  endColumn: number
-  /** The table's column names: its header row. */
-  columnNames: string[]
-  /** Dropdown columns, by their index in the table, with their options. */
-  dropdowns: { index: number; options: string[] }[]
-}
+export const TEND_VERSION = 2
 
 export type StatCell = {
   text: string
@@ -100,9 +91,9 @@ export type Tending = {
   headerRow: number
   newColumns: NewColumn[]
   /**
-   * Columns whose dropdown, chip colors and look are (re)set, replacing the app's earlier ones: all
-   * of them whenever a column is added or moved or the stats block changes shape, so a sheet tended
-   * by an earlier version catches up.
+   * Columns whose dropdown, colors and look are (re)set, replacing the app's earlier ones: all of
+   * them whenever a column is added or moved, the stats block changes shape, or the tab was tended
+   * by an earlier version.
    */
   dropdowns: NewColumn[]
   cells: { row: number; column: number; text: string }[]
@@ -112,7 +103,8 @@ export type Tending = {
   columnCount: number
   /** Rows the tab needs: the empty ones below go. */
   rowCount: number
-  tables: SheetTable[]
+  /** The tab was tended by an earlier version: TEND_VERSION goes into its metadata. */
+  setVersion: boolean
   /** The tab's values with all of it in. */
   values: string[][]
   changed: boolean
@@ -164,8 +156,6 @@ export function expectedTurnout(people: Pick<Person, 'key' | 'level' | 'status'>
   return { likely, walkIns, total: likely + walkIns, checkedIn }
 }
 
-const CONTACT_TABLE = 'Contact status'
-const CHAT_TABLE = 'Group chats'
 
 /** The tables in the block, left to right, two columns each. */
 function statsTables(people: Person[], hasDatabase: boolean, turnout: Turnout | null) {
@@ -216,11 +206,11 @@ function statsTables(people: Person[], hasDatabase: boolean, turnout: Turnout | 
       ],
     },
     {
-      name: CONTACT_TABLE,
+      name: 'Contact status',
       rows: CONTACT_STATUSES.map((s) => [titleCase(s.label), share(status(s.value)), STATUS_COLORS[s.value]]),
     },
     {
-      name: CHAT_TABLE,
+      name: 'Group chats',
       rows: GROUP_CHAT_STATUSES.map((s) => [s.label, share(count((p) => p.groupChat === s.value)), STAGE_COLORS[s.stage]]),
     },
     {
@@ -268,7 +258,6 @@ export function statsBlock(people: Person[], hasDatabase: boolean, updated: stri
       while (line.length < column) line.push({ text: '' })
       line.splice(column, 2, ...cells)
     }
-    // Both columns are named, so a status table can be a Google Sheets table.
     put(TABLE_TOP, [{ text: table.name, style: 'head' }, { text: 'Count', style: 'head' }])
     table.rows.slice(0, TABLE_ROWS).forEach(([name, value, swatch], i) => {
       const last = i === Math.min(table.rows.length, TABLE_ROWS) - 1
@@ -280,24 +269,6 @@ export function statsBlock(people: Person[], hasDatabase: boolean, updated: stri
     })
   })
   return block
-}
-
-/** The status tables in the stats block, as Google Sheets tables so their statuses show as chips. */
-function statsSheetTables(): SheetTable[] {
-  const tables: [string, string[]][] = [
-    [CONTACT_TABLE, CONTACT_STATUSES.map((s) => titleCase(s.label))],
-    [CHAT_TABLE, GROUP_CHAT_STATUSES.map((s) => s.label)],
-  ]
-  // Third and fourth from the left.
-  return tables.map(([name, options], i) => ({
-    name,
-    startRow: TABLE_TOP,
-    endRow: TABLE_TOP + 1 + options.length,
-    startColumn: (i + 2) * 2,
-    endColumn: (i + 2) * 2 + 2,
-    columnNames: [name, 'Count'],
-    dropdowns: [{ index: 0, options }],
-  }))
 }
 
 const rowTexts = (row: (StatCell | string | undefined)[]) => {
@@ -329,7 +300,11 @@ export function planTending(
   values: string[][],
   fieldMap: FieldMap,
   database: string[][] | null,
-  { now = Date.now(), turnout = null }: { now?: number; turnout?: Turnout | null } = {},
+  {
+    now = Date.now(),
+    turnout = null,
+    version = TEND_VERSION,
+  }: { now?: number; turnout?: Turnout | null; /** The version the tab was last tended with; 0 if never. */ version?: number } = {},
 ): Tending | null {
   let parsed: ParseResult
   try {
@@ -392,6 +367,7 @@ export function planTending(
     set(parsed.headerRow, col[key], COLUMN_HEADERS[key])
   }
 
+  const upgrading = version < TEND_VERSION
   const reparsed = parseSheet(out, { headerRow: parsed.headerRow, fieldMap: locateFieldMap(fieldMap) })
   const { contacts } = readContacts(out, fieldMap)
   const matchOf = database ? databaseMatcher(out, reparsed, database) : null
@@ -412,11 +388,14 @@ export function planTending(
       returning = matchOf(i) ? 'returning' : 'new'
       set(row, col.returning, RETURNING_LABELS[returning])
     }
-    // Not Invited is where everyone starts, so it's only ever the app's: an answer of Yes or No
-    // thank you (filled in as Not Invited by the first version) takes it over.
+    // The first version read "No - Please help me join!" as Doesn't Want To Join and "Yes" as Not
+    // Invited; once, on catching up from it, those are put right.
     let groupChat = c.groupChat
     const starting = startingChat(c)
-    if (!cell(row, col.groupChat) || (groupChat === 'not_invited' && starting !== 'not_invited')) {
+    const firstVersionGuess =
+      upgrading &&
+      ((c.chatAnswer === 'add' && groupChat === 'declined') || (c.chatAnswer !== 'add' && groupChat === 'not_invited' && starting !== 'not_invited'))
+    if (!cell(row, col.groupChat) || firstVersionGuess) {
       groupChat = starting
       set(row, col.groupChat, groupChatLabel(groupChat))
     }
@@ -430,25 +409,12 @@ export function planTending(
   const updated = new Date(now).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
   const block = statsBlock(people, database !== null, updated, turnout)
   const statsChanged =
-    rowOp !== null || columnOps.length > 0 || block.slice(1).some((row, i) => rowTexts(row) !== rowTexts(out[i + 1] ?? []))
+    rowOp !== null || columnOps.length > 0 || upgrading || block.slice(1).some((row, i) => rowTexts(row) !== rowTexts(out[i + 1] ?? []))
   const rest = out.slice(blockRows)
   const final = statsChanged ? [...block.map((row) => row.map((c) => c.text)), ...rest] : out
   const headerRow = parsed.headerRow + shift
-  // The sign-ups as a table, from the header to the last row, over the named columns.
-  const header = final[headerRow] ?? []
-  let headerWidth = header.length
-  while (headerWidth > 0 && !clean(header[headerWidth - 1])) headerWidth--
-  // Sheets keeps a row under the frozen header (and a table needs one), even with no sign-ups yet.
+  // Sheets keeps a row under the frozen header, even with no sign-ups yet.
   const lastRow = Math.max(headerRow + 2, final.length)
-  const signups: SheetTable = {
-    name: 'Sign-ups',
-    startRow: headerRow,
-    endRow: lastRow,
-    startColumn: 0,
-    endColumn: headerWidth,
-    columnNames: header.slice(0, headerWidth).map((h) => clean(h)),
-    dropdowns: FRONT_COLUMNS.map((key) => ({ index: col[key], options: OPTIONS[key].map((o) => o.label) })),
-  }
 
   return {
     rowOp,
@@ -456,16 +422,16 @@ export function planTending(
     headerRow,
     newColumns,
     dropdowns:
-      // A new layout of the stats block comes with a new look for the columns too.
-      columnOps.length || newColumns.length || rowOp
+      // A new layout or a new version comes with the columns' dropdowns and colors set again.
+      columnOps.length || newColumns.length || rowOp || upgrading
         ? FRONT_COLUMNS.map((key) => ({ column: col[key], header: COLUMN_HEADERS[key], options: OPTIONS[key] }))
         : [],
     cells: cells.map((c) => ({ ...c, row: c.row + shift })),
     stats: statsChanged ? block : null,
     columnCount: Math.max(order.length, ...block.map((r) => r.length)),
     rowCount: lastRow,
-    tables: [signups, ...statsSheetTables()],
+    setVersion: upgrading,
     values: final,
-    changed: statsChanged || cells.length > 0,
+    changed: statsChanged || cells.length > 0 || upgrading,
   }
 }
