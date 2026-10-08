@@ -8,7 +8,7 @@
 import { checkInTabTitle, type CheckInLayout } from './checkInTab'
 import { parseSheet, type ContactStatus, type FieldMap } from './sheetParser'
 import { formatStamp, groupChatLabel, groupChatOf, type GroupChatStatus } from './signupColumns'
-import { STATS_ROWS, type StatCell, type Tending } from './sheetTending'
+import { STATS_ROWS, TEND_VERSION, type StatCell, type Tending } from './sheetTending'
 import { extraColumns, locateFieldMap, statusText } from './signupTracker'
 import { isDatabaseTab } from './studentDatabase'
 import { CONTACT_STATUSES, type AppConfig } from './types'
@@ -184,17 +184,24 @@ export async function withSheetAccess<T>(config: AppConfig, spreadsheetId: strin
   }
 }
 
-/** `columns` is the tab's grid width, which can be more than its values show. */
-export type Tab = { id: number; title: string; rows: number; columns: number }
+/**
+ * `rows` and `columns` are the tab's grid size, which can be more than its values show. `version` is
+ * the app version that last tended it (see sheetTending.ts), from its developer metadata.
+ */
+export type Tab = { id: number; title: string; rows: number; columns: number; version: { id: number; value: number } | null }
+
+const VERSION_KEY = 'ismp-registration-tended'
 
 export async function getSpreadsheet(config: AppConfig, spreadsheetId: string): Promise<{ title: string; tabs: Tab[] }> {
   type Meta = {
     properties: { title: string }
     sheets: {
       properties: { sheetId: number; title: string; hidden?: boolean; gridProperties?: { rowCount?: number; columnCount?: number } }
+      developerMetadata?: { metadataId: number; metadataKey: string; metadataValue?: string }[]
     }[]
   }
-  const fields = 'properties.title,sheets.properties(sheetId,title,hidden,gridProperties(rowCount,columnCount))'
+  const fields =
+    'properties.title,sheets(properties(sheetId,title,hidden,gridProperties(rowCount,columnCount)),developerMetadata(metadataId,metadataKey,metadataValue))'
   const meta = await sheetsFetch<Meta>(config, `${encodeURIComponent(spreadsheetId)}?fields=${encodeURIComponent(fields)}`)
   return {
     title: meta.properties.title,
@@ -205,6 +212,10 @@ export async function getSpreadsheet(config: AppConfig, spreadsheetId: string): 
         title: s.properties.title,
         rows: s.properties.gridProperties?.rowCount ?? 0,
         columns: s.properties.gridProperties?.columnCount ?? 0,
+        version: (() => {
+          const meta = s.developerMetadata?.find((m) => m.metadataKey === VERSION_KEY)
+          return meta ? { id: meta.metadataId, value: Number(meta.metadataValue) || 0 } : null
+        })(),
       })),
   }
 }
@@ -462,6 +473,8 @@ export async function writeCheckInTab(
  */
 export async function applyTending(config: AppConfig, spreadsheetId: string, tab: Tab, tending: Tending) {
   const sheetId = tab.id
+  // Before the stats are written, in case taking a table away clears its cells.
+  if (tending.setVersion) await removeStatsTables(config, spreadsheetId, sheetId).catch(() => {})
   const requests: unknown[] = []
   if (tending.dropdowns.length) {
     // The app's own color rules (text equal to one of its options) go, to be added again below.
@@ -584,6 +597,24 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
       })),
     )
   }
+  if (tending.setVersion) {
+    const value = String(TEND_VERSION)
+    requests.push(
+      tab.version
+        ? {
+            updateDeveloperMetadata: {
+              dataFilters: [{ developerMetadataLookup: { metadataId: tab.version.id } }],
+              developerMetadata: { metadataValue: value },
+              fields: 'metadataValue',
+            },
+          }
+        : {
+            createDeveloperMetadata: {
+              developerMetadata: { metadataKey: VERSION_KEY, metadataValue: value, location: { sheetId }, visibility: 'DOCUMENT' },
+            },
+          },
+    )
+  }
   if (requests.length) {
     try {
       await batchUpdate(config, spreadsheetId, requests)
@@ -592,101 +623,49 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
       throw err
     }
   }
-  return applyTables(config, spreadsheetId, sheetId, tending)
+  return applyDropdowns(config, spreadsheetId, sheetId, tending)
 }
-
-const rgbStyle = (red: number, green: number, blue: number) => ({ rgbColor: { red, green, blue } })
 
 /**
- * Makes the sign-ups and the stats' status tables Google Sheets tables, whose dropdown columns show
- * as chips (a plain dropdown's chip look can't be set through the API), and keeps their ranges in
- * step with the rows. Each table goes on its own, so one Google turns down doesn't hold up the rest;
- * if the sign-ups can't be a table, their status columns get plain dropdowns instead. Returns why
- * any couldn't, or null.
+ * The status columns' dropdowns, on their own so a sheet that won't take them (say they're a table's
+ * typed columns) still gets everything else. Returns why not, or null.
+ *
+ * The API can't choose a dropdown's display style, so these show Google's arrow style until someone
+ * sets them to chips once (Data → Data validation → Advanced options → Display style: Chip). They're
+ * only set again by a new layout or version of the app.
  */
-async function applyTables(config: AppConfig, spreadsheetId: string, sheetId: number, tending: Tending): Promise<string | null> {
+async function applyDropdowns(config: AppConfig, spreadsheetId: string, sheetId: number, tending: Tending): Promise<string | null> {
+  if (tending.dropdowns.length === 0) return null
   try {
-    return await addTables(config, spreadsheetId, sheetId, tending)
+    await batchUpdate(
+      config,
+      spreadsheetId,
+      tending.dropdowns.map(({ column, options }) => ({
+        setDataValidation: {
+          range: { sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: column, endColumnIndex: column + 1 },
+          rule: { condition: { type: 'ONE_OF_LIST', values: options.map((o) => ({ userEnteredValue: o.label })) }, showCustomUi: true, strict: false },
+        },
+      })),
+    )
+    return null
   } catch (err) {
-    return `Couldn’t make the dropdowns chips: ${errorMessage(err)}`
+    return `The status columns’ dropdowns couldn’t be set: ${errorMessage(err)}`
   }
 }
 
-async function addTables(config: AppConfig, spreadsheetId: string, sheetId: number, tending: Tending): Promise<string | null> {
-  type Existing = { tableId: string; name: string; range: { startRowIndex?: number; endRowIndex?: number; startColumnIndex?: number; endColumnIndex?: number } }
-  const meta = await sheetsFetch<{ sheets: { properties: { sheetId: number }; tables?: Existing[] }[] }>(
+/**
+ * The previous version tried to make the stats' Contact status and Group chats tables into Google
+ * Sheets tables; where it managed to, they go back to plain cells (rewritten with the stats). Only
+ * those: a sign-ups table someone made is left alone.
+ */
+async function removeStatsTables(config: AppConfig, spreadsheetId: string, sheetId: number) {
+  const meta = await sheetsFetch<{ sheets: { properties: { sheetId: number }; tables?: { tableId: string; name: string }[] }[] }>(
     config,
-    `${encodeURIComponent(spreadsheetId)}?fields=${encodeURIComponent('sheets(properties.sheetId,tables(tableId,name,range))')}`,
+    `${encodeURIComponent(spreadsheetId)}?fields=${encodeURIComponent('sheets(properties.sheetId,tables(tableId,name))')}`,
   )
-  const existing = meta.sheets.find((s) => s.properties.sheetId === sheetId)?.tables ?? []
-  const problems: string[] = []
-  for (const spec of tending.tables) {
-    // Unique in the spreadsheet: the same tab can be imported twice, and other tabs have their own.
-    const name = `${spec.name}_${sheetId}`.replace(/[^A-Za-z0-9]+/g, '_')
-    const range = { sheetId, startRowIndex: spec.startRow, endRowIndex: spec.endRow, startColumnIndex: spec.startColumn, endColumnIndex: spec.endColumn }
-    const table = existing.find((t) => t.name === name)
-    const isSignups = spec === tending.tables[0]
-    try {
-      if (table) {
-        const r = table.range
-        const same =
-          r.startRowIndex === range.startRowIndex && r.endRowIndex === range.endRowIndex &&
-          (r.startColumnIndex ?? 0) === range.startColumnIndex && r.endColumnIndex === range.endColumnIndex
-        if (!same) await batchUpdate(config, spreadsheetId, [{ updateTable: { table: { tableId: table.tableId, range }, fields: 'range' } }])
-        continue
-      }
-      if (spec.endColumn <= spec.startColumn || spec.columnNames.some((n) => !n)) throw new Error('every column needs a header')
-      const dropdownAt = new Map(spec.dropdowns.map((d) => [d.index, d.options]))
-      await batchUpdate(config, spreadsheetId, [
-        // The plain dropdowns from before give way to the table's own.
-        ...spec.dropdowns.map((d) => ({
-          setDataValidation: {
-            range: { sheetId, startRowIndex: spec.startRow + 1, endRowIndex: spec.endRow, startColumnIndex: spec.startColumn + d.index, endColumnIndex: spec.startColumn + d.index + 1 },
-          },
-        })),
-        {
-          addTable: {
-            table: {
-              name,
-              range,
-              columnProperties: spec.columnNames.map((columnName, columnIndex) => {
-                const options = dropdownAt.get(columnIndex)
-                return {
-                  columnIndex,
-                  columnName,
-                  ...(options && {
-                    columnType: 'DROPDOWN',
-                    dataValidationRule: { condition: { type: 'ONE_OF_LIST', values: options.map((userEnteredValue) => ({ userEnteredValue })) } },
-                  }),
-                }
-              }),
-              rowsProperties: {
-                headerColorStyle: rgbStyle(0.2, 0.25, 0.33),
-                firstBandColorStyle: rgbStyle(1, 1, 1),
-                secondBandColorStyle: rgbStyle(0.97, 0.98, 0.99),
-              },
-            },
-          },
-        },
-      ])
-    } catch (err) {
-      problems.push(`${spec.name}: ${errorMessage(err)}`)
-      if (isSignups && tending.dropdowns.length) {
-        // Plain dropdowns, so the statuses can still be picked.
-        await batchUpdate(
-          config,
-          spreadsheetId,
-          tending.dropdowns.map(({ column, options }) => ({
-            setDataValidation: {
-              range: { sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: column, endColumnIndex: column + 1 },
-              rule: { condition: { type: 'ONE_OF_LIST', values: options.map((o) => ({ userEnteredValue: o.label })) }, showCustomUi: true, strict: false },
-            },
-          })),
-        ).catch(() => {})
-      }
-    }
-  }
-  return problems.length ? `Google didn’t make these into tables, so their dropdowns aren’t chips: ${problems.join('; ')}` : null
+  const tables = meta.sheets.find((s) => s.properties.sheetId === sheetId)?.tables ?? []
+  const ours = tables.filter((t) => t.name === `Contact_status_${sheetId}` || t.name === `Group_chats_${sheetId}`)
+  if (ours.length) await batchUpdate(config, spreadsheetId, ours.map((t) => ({ deleteTable: { tableId: t.tableId } })))
 }
 
 const errorMessage = (err: unknown) => (err instanceof Error && err.message ? err.message : 'unknown error')

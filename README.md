@@ -41,10 +41,11 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   - Keeps the timestamp in column A and puts **Contact Status**, **New or Returning** and **Group
     Chat Status** in B, C and D (adding them, or moving them there from wherever they were), and
     **Contacted At** after the last column.
-  - Makes the sign-ups a Google Sheets **table**, so those three columns are single-select
-    dropdowns shown as chips (the API can't give a plain dropdown chips; only a table's dropdown
-    columns are), colored like the app. If Google won't make the table (say the range overlaps
-    another table), they're plain dropdowns instead and the Sign-ups page says why.
+  - Gives those three columns single-select dropdowns colored like the app. The Sheets API can't
+    choose a dropdown's display style, so to see them as chips, once per sheet: select columns B–D,
+    open Data → Data validation, and for each rule set Advanced options → Display style to *Chip*.
+    The app only sets the dropdowns again for a new layout or version, which puts them back to
+    arrows. (It no longer tries making the sign-ups a Google Sheets table: Google refused that.)
   - Removes the empty rows under the last sign-up.
   - Fills blank Contact Status with *Not Contacted*.
   - Fills New or Returning by looking each person up in the spreadsheet's **Student Database** tab
@@ -53,8 +54,10 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   - Fills Group Chat Status from the form's "Are you already part of our WeChat/Line group chat?":
     *Yes* (already in it, nothing to do) is *Already In Group*, *No - Please help me join!* is
     *Not Invited* (to be added), and *No thank you, I don't want to be added* is *Doesn't Want To
-    Join* (left alone). A *Not Invited* left by the first version gives way to the answer, since
-    nobody sets it by hand for someone already in or not wanting in. Without an answer it's
+    Join* (left alone). The first version's wrong guesses (*Doesn't Want To Join* for "please help
+    me join", *Not Invited* for "Yes") are corrected once, when a tab catches up from it; the
+    version that last tended a tab is kept in the tab's hidden developer metadata. Without an answer
+    it's
     *Not Invited* (or *Added To WeChat/Line* where an older "Added to Group Chat" checkbox was
     ticked). The statuses, by stage: To Do (*Not Invited*), Pending (*WeChat Friend Request Sent*,
     *Line QR Shared*, *WeChat Group Invite Sent*), Complete (*Added To WeChat*, *Added To Line*,
@@ -66,9 +69,9 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
     numbers change: a title bar with the expected attendance, then six boxed tables side by side,
     two columns each: **Expected attendance** (worked out like the tables are planned: each
     sign-up's show-up rate by status, plus walk-ins, against the capacity), Overview, Contact
-    status, Group chats, Gender & level, and New vs returning, with counts and percentages. The
-    Contact status and Group chats tables are Google Sheets tables too, so their statuses are
-    chips. Two empty rows separate the block from the sheet's header.
+    status, Group chats, Gender & level, and New vs returning, with counts and percentages, the
+    statuses colored like their dropdowns. Two empty rows separate the block from the sheet's
+    header.
 
   None of these columns are sent to the server. The Sign-ups page sets Group Chat Status from a
   dropdown on each row, and the **Add to chats** filter lists the confirmed people who asked to be

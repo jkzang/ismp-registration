@@ -60,10 +60,10 @@ export function readTended(
       if (!data) return null
       const database = await readDatabaseTab(config, sheet.spreadsheet_id, data.tabs, sheet.tab_id)
       const tab = data.tabs.find((t) => t.id === sheet.tab_id)
-      const plan = planTending(data.values, sheet.field_map, database, { turnout })
+      const plan = planTending(data.values, sheet.field_map, database, { turnout, version: tab?.version?.value ?? 0 })
       if (!tab || !plan?.changed) return { ...data, database }
       try {
-        // Null, or why the dropdowns couldn't be made chips (the values are in either way).
+        // Null, or why the dropdowns couldn't be set (the values are in either way).
         const tableError = await applyTending(config, sheet.spreadsheet_id, tab, plan)
         return { ...data, values: plan.values, database, ...(tableError && { tendError: tableError }) }
       } catch (err) {
