@@ -16,10 +16,10 @@ export type Contact = SignupRow & {
   signedUp: string
   /** Social media IDs they gave, labeled by their column's header. */
   socials: { label: string; id: string }[]
-  /** Said they'd like to join the group chats (or, without that question, gave an ID). */
+  /** Their answer to the group chat question: already in them, asking to be added, or not wanting to be. */
+  chatAnswer: ChatAnswer
+  /** Asked to be added to the group chats (or, without that question, gave an ID). */
   wantsChat: boolean
-  /** Answered no to joining the group chats. */
-  declinedChat: boolean
   /** Ticked in an older sheet's "Added to Group Chat" checkbox column. */
   chatTicked: boolean
   /** The Group Chat Status column; null when blank or unrecognized. */
@@ -68,7 +68,22 @@ export function extraColumns(headers: string[], used: Set<number>) {
 
 const NO_ANSWER = /^(n ?a|none|no|nil|null|nope|-+|\.)?$/
 const YES = /^(y|yes|yeah|yep|sure|ok|okay|definitely|of course|absolutely)\b/
-const NO = /^(n|no|nope|nah|not|no thanks?)\b/
+
+/**
+ * The form asks "Yes!" (already in our group chats), "No - Please help me join!" (to be added) or
+ * "No thank you, I don't want to be added" (leave them be).
+ */
+export type ChatAnswer = 'in' | 'add' | 'declined' | ''
+
+export function chatAnswerOf(text: string): ChatAnswer {
+  const t = words(text)
+  const declines = /\b(no thank|no thanks|don t want|do not want|not interested|rather not)\b/.test(t)
+  if (!declines && /\b(help|add me|please add|want to join|like to join)\b/.test(t)) return 'add'
+  if (declines || /^(n|no|nope|nah)$/.test(t)) return 'declined'
+  if (YES.test(t)) return 'in'
+  return ''
+}
+
 /** A checkbox (or a typed yes) in an older sheet's "Added to Group Chat" column. */
 export const isTicked = (text: string) => /^(true|yes|y|added|done|x|✓|✔)$/i.test(text.trim())
 
@@ -106,7 +121,7 @@ export function readContacts(values: string[][], fieldMap: FieldMap) {
       const id = cellOf(values, index, column)
       return NO_ANSWER.test(words(id)) ? [] : [{ label: parsed.headers[column], id }]
     })
-    const join = words(cellOf(values, index, extra.joinChat))
+    const chatAnswer = chatAnswerOf(cellOf(values, index, extra.joinChat))
     return {
       ...row,
       row: index,
@@ -114,8 +129,8 @@ export function readContacts(values: string[][], fieldMap: FieldMap) {
       email: cellOf(values, index, columns.email),
       signedUp: cellOf(values, index, columns.timestamp),
       socials,
-      wantsChat: extra.joinChat !== undefined ? YES.test(join) : socials.length > 0,
-      declinedChat: extra.joinChat !== undefined && NO.test(join),
+      chatAnswer,
+      wantsChat: extra.joinChat !== undefined ? chatAnswer === 'add' : socials.length > 0,
       chatTicked: isTicked(cellOf(values, index, extra.chatAdded)),
       groupChat: groupChatOf(cellOf(values, index, extra.groupChat)),
       returning: returningOf(cellOf(values, index, extra.returning)),

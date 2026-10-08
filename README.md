@@ -35,27 +35,32 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
 - **The app tends every imported sign-up tab** whenever it reads it (at import, every 30 seconds on
   a sheet's pages, and for every sheet when the app opens with Google already connected). It only
   fills blank cells, so anything typed in the sheet stays:
-  - Adds **Contact Status**, **New or Returning**, **Group Chat Status** and **Contacted At**
-    columns after the last column when they're missing, as dropdowns colored like the app.
+  - Puts **Contact Status**, **New or Returning** and **Group Chat Status** in columns A, B and C
+    (adding them, or moving them there from wherever they were), and **Contacted At** after the
+    last column, as dropdowns colored like the app.
   - Fills blank Contact Status with *Not Contacted*.
   - Fills New or Returning by looking each person up in the spreadsheet's **Student Database** tab
     (by phone, then email, then name): found is *Returning*, otherwise *New*. Without that tab it's
     left blank.
-  - Fills Group Chat Status with *Doesn't Want To Join* for people who answered no to a "join our
-    group chats" question, otherwise *Not Invited* (or *Added To WeChat/Line* where an older
-    "Added to Group Chat" checkbox was ticked). The statuses, by stage: To Do (*Not Invited*),
-    Pending (*WeChat Friend Request Sent*, *Line QR Shared*, *WeChat Group Invite Sent*), Complete
-    (*Added To WeChat*, *Added To Line*), N/A (*Doesn't Want To Join*).
+  - Fills Group Chat Status from the form's group chat question: *Yes!* (already in our group) is
+    *Already In Group*, *No - Please help me join!* is *Not Invited* (to be added), and *No thank
+    you, I don't want to be added* is *Doesn't Want To Join* (left alone). Without an answer it's
+    *Not Invited* (or *Added To WeChat/Line* where an older "Added to Group Chat" checkbox was
+    ticked). The statuses, by stage: To Do (*Not Invited*), Pending (*WeChat Friend Request Sent*,
+    *Line QR Shared*, *WeChat Group Invite Sent*), Complete (*Added To WeChat*, *Added To Line*,
+    *Already In Group*), N/A (*Doesn't Want To Join*).
   - Moving someone to *Awaiting response* from the Sign-ups page stamps Contacted At (someone set to
     it in the sheet is stamped the next time it's read); 48 hours later they're moved to
     *No Response*.
-  - Keeps a **Sign-up statistics** block in six rows above the header (sign-ups by gender and level,
-    new vs returning, contact statuses, group chat stages), frozen with the header and rewritten when
-    the numbers change.
+  - Keeps a **Sign-up statistics** block in ten rows above the header, frozen with it and rewritten
+    when the numbers change: a row of colored headline tiles (signed up, confirmed, awaiting
+    response, not contacted yet, no response, not coming, new, returning, to add to chats), then
+    gender and level, new vs returning (and among the confirmed), every contact status, group chat
+    stages and statuses, and when people signed up, with percentages.
 
   None of these columns are sent to the server. The Sign-ups page sets Group Chat Status from a
-  dropdown on each row, and the **Add to chats** filter lists the confirmed people who asked to join
-  and are still To Do or Pending. The overview charts new vs returning and the group chat stages.
+  dropdown on each row, and the **Add to chats** filter lists the confirmed people who asked to be
+  added and are still To Do or Pending. The overview charts new vs returning and the group chat stages.
   A "How did you hear about this event?" question feeds the overview. Like phone numbers, social
   media IDs and these answers stay in the browser.
 - Several volunteers can use a sheet at once. Each device asks the server for a sync ticket before

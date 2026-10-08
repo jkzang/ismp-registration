@@ -108,7 +108,7 @@ export function SignupPersonDialog({ contact, status, groupChat, event, message,
               ))}
               {contact.contactedAt && <Field label="Contacted">{shortTimestamp(contact.contactedAt)}</Field>}
               {(groupChat || contact.wantsChat) && (
-                <Field label="Group chats">{groupChat ? groupChatLabel(groupChat) : 'Wants to join'}</Field>
+                <Field label="Group chats">{groupChat ? groupChatLabel(groupChat) : 'Asked to be added'}</Field>
               )}
               {contact.referral && <Field label="Heard about it">{contact.referral}</Field>}
               {contact.answers.map((a) => (
