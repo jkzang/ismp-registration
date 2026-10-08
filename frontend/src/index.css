@@ -3236,24 +3236,53 @@ button.overview-action:hover {
   .detail-chip.level-grad { background: rgba(139, 92, 246, 0.18); color: #c4b5fd; }
 }
 
-/* When they signed up, in its own column at the start of each row. */
+/* When they signed up, in its own column at the start of each row, on one line. */
 .signup-when {
   flex: none;
-  width: 104px;
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
+  width: 156px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
-.signup-date {
-  font-size: 14px;
+/* The list's column names, spaced like its rows. */
+.signups-columns {
+  display: flex;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 0 10px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.signups-columns .signup-when {
+  font-size: 12px;
   font-weight: 700;
 }
 
-.signup-time {
-  font-size: 13px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
+.signups-columns .signup-person {
+  flex: 1;
+}
+
+.signups-column-chat {
+  width: 200px;
+  padding-left: 8px;
+}
+
+.signups-column-status {
+  width: 172px;
+  padding-left: 8px;
+}
+
+@media (max-width: 900px) {
+  .signups-columns {
+    display: none;
+  }
 }
 
 .signups-list .signup-person {

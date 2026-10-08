@@ -188,7 +188,15 @@ export async function withSheetAccess<T>(config: AppConfig, spreadsheetId: strin
  * `rows` and `columns` are the tab's grid size, which can be more than its values show. `version` is
  * the app version that last tended it (see sheetTending.ts), from its developer metadata.
  */
-export type Tab = { id: number; title: string; rows: number; columns: number; version: { id: number; value: number } | null }
+export type Tab = {
+  id: number
+  title: string
+  rows: number
+  columns: number
+  version: { id: number; value: number } | null
+  /** The tab's row groups (the stats block's is the one that hides it). */
+  rowGroups: { start: number; end: number }[]
+}
 
 const VERSION_KEY = 'ismp-registration-tended'
 
@@ -198,10 +206,11 @@ export async function getSpreadsheet(config: AppConfig, spreadsheetId: string): 
     sheets: {
       properties: { sheetId: number; title: string; hidden?: boolean; gridProperties?: { rowCount?: number; columnCount?: number } }
       developerMetadata?: { metadataId: number; metadataKey: string; metadataValue?: string }[]
+      rowGroups?: { range: { startIndex?: number; endIndex?: number } }[]
     }[]
   }
   const fields =
-    'properties.title,sheets(properties(sheetId,title,hidden,gridProperties(rowCount,columnCount)),developerMetadata(metadataId,metadataKey,metadataValue))'
+    'properties.title,sheets(properties(sheetId,title,hidden,gridProperties(rowCount,columnCount)),developerMetadata(metadataId,metadataKey,metadataValue),rowGroups(range(startIndex,endIndex)))'
   const meta = await sheetsFetch<Meta>(config, `${encodeURIComponent(spreadsheetId)}?fields=${encodeURIComponent(fields)}`)
   return {
     title: meta.properties.title,
@@ -216,6 +225,7 @@ export async function getSpreadsheet(config: AppConfig, spreadsheetId: string): 
           const meta = s.developerMetadata?.find((m) => m.metadataKey === VERSION_KEY)
           return meta ? { id: meta.metadataId, value: Number(meta.metadataValue) || 0 } : null
         })(),
+        rowGroups: (s.rowGroups ?? []).map((g) => ({ start: g.range.startIndex ?? 0, end: g.range.endIndex ?? 0 })),
       })),
   }
 }
@@ -623,30 +633,93 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
       throw err
     }
   }
+  // Set again when the block changes shape or is missing its group.
+  const grouped = !tending.rowOp && tab.rowGroups.some((g) => g.start === 1 && g.end === STATS_ROWS)
+  if (tending.stats && !grouped) await groupStats(config, spreadsheetId, sheetId).catch(() => {})
   return applyDropdowns(config, spreadsheetId, sheetId, tending)
 }
 
 /**
- * The status columns' dropdowns, on their own so a sheet that won't take them (say they're a table's
- * typed columns) still gets everything else. Returns why not, or null.
+ * Makes everything under the stats' title row one row group, so the − / + beside the title hides or
+ * shows it. Any group already at the top goes first (read again, as the rows may just have moved),
+ * so they don't nest. On its own: if Google won't group the frozen rows, nothing else is held up.
+ */
+async function groupStats(config: AppConfig, spreadsheetId: string, sheetId: number) {
+  const meta = await sheetsFetch<{ sheets: { properties: { sheetId: number }; rowGroups?: { range: { startIndex?: number; endIndex?: number } }[] }[] }>(
+    config,
+    `${encodeURIComponent(spreadsheetId)}?fields=${encodeURIComponent('sheets(properties.sheetId,rowGroups(range(startIndex,endIndex)))')}`,
+  )
+  const groups = meta.sheets.find((s) => s.properties.sheetId === sheetId)?.rowGroups ?? []
+  await batchUpdate(config, spreadsheetId, [
+    ...groups
+      .filter((g) => (g.range.startIndex ?? 0) < STATS_ROWS)
+      .map((g) => ({
+        deleteDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: g.range.startIndex ?? 0, endIndex: g.range.endIndex ?? 0 } },
+      })),
+    { addDimensionGroup: { range: { sheetId, dimension: 'ROWS', startIndex: 1, endIndex: STATS_ROWS } } },
+    // The − / + beside the title, above what it hides.
+    {
+      updateSheetProperties: {
+        properties: { sheetId, gridProperties: { rowGroupControlAfter: false } },
+        fields: 'gridProperties.rowGroupControlAfter',
+      },
+    },
+  ])
+}
+
+/**
+ * The status columns' dropdowns, on their own so a sheet that won't take them still gets everything
+ * else. Returns why not, or null. They're only set again by a new layout or version of the app.
  *
- * The API can't choose a dropdown's display style, so these show Google's arrow style until someone
- * sets them to chips once (Data → Data validation → Advanced options → Display style: Chip). They're
- * only set again by a new layout or version of the app.
+ * Chips: the API can't choose a plain dropdown's display style (it makes arrows), but a Google
+ * Sheets table's dropdown column always shows chips. So for each column a table with that dropdown
+ * is made on a hidden scratch tab, its rule is pasted over the column (a pasted rule keeps its
+ * display style), and the scratch tab is deleted, all in one request. If Google turns that down, the
+ * columns get plain arrow dropdowns.
  */
 async function applyDropdowns(config: AppConfig, spreadsheetId: string, sheetId: number, tending: Tending): Promise<string | null> {
   if (tending.dropdowns.length === 0) return null
-  try {
-    await batchUpdate(
-      config,
-      spreadsheetId,
-      tending.dropdowns.map(({ column, options }) => ({
-        setDataValidation: {
-          range: { sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: column, endColumnIndex: column + 1 },
-          rule: { condition: { type: 'ONE_OF_LIST', values: options.map((o) => ({ userEnteredValue: o.label })) }, showCustomUi: true, strict: false },
+  const column = (c: number) => ({ sheetId, startRowIndex: tending.headerRow + 1, startColumnIndex: c, endColumnIndex: c + 1 })
+  const values = (options: { label: string }[]) => options.map((o) => ({ userEnteredValue: o.label }))
+  const plain = tending.dropdowns.map(({ column: c, options }) => ({
+    setDataValidation: {
+      range: column(c),
+      rule: { condition: { type: 'ONE_OF_LIST', values: values(options) }, showCustomUi: true, strict: false },
+    },
+  }))
+  const chips = tending.dropdowns.flatMap(({ column: c, options }) => {
+    const scratch = 100_000_000 + Math.floor(Math.random() * 900_000_000)
+    const cell = { sheetId: scratch, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 0, endColumnIndex: 1 }
+    return [
+      { addSheet: { properties: { sheetId: scratch, title: `ISMP chips ${scratch}`, hidden: true, gridProperties: { rowCount: 2, columnCount: 1 } } } },
+      {
+        addTable: {
+          table: {
+            name: `ISMP_chips_${scratch}`,
+            range: { ...cell, startRowIndex: 0 },
+            columnProperties: [
+              {
+                columnIndex: 0,
+                columnName: 'Status',
+                columnType: 'DROPDOWN',
+                dataValidationRule: { condition: { type: 'ONE_OF_LIST', values: values(options) } },
+              },
+            ],
+          },
         },
-      })),
-    )
+      },
+      { copyPaste: { source: cell, destination: column(c), pasteType: 'PASTE_DATA_VALIDATION' } },
+      { deleteSheet: { sheetId: scratch } },
+    ]
+  })
+  try {
+    await batchUpdate(config, spreadsheetId, chips)
+    return null
+  } catch {
+    // Arrows, then.
+  }
+  try {
+    await batchUpdate(config, spreadsheetId, plain)
     return null
   } catch (err) {
     return `The status columns’ dropdowns couldn’t be set: ${errorMessage(err)}`

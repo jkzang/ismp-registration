@@ -235,14 +235,13 @@ export function signedUpWithin(signedUp: string, range: string, now = Date.now()
   return age >= days[0] && age < days[1]
 }
 
-/** The timestamp as a date and a time, for the Sign-ups list's own column. Null when it can't be read. */
-export function signedUpParts(text: string) {
+/** "10/08/2026 03:15 PM", for the Sign-ups list's own column. Null when the timestamp can't be read. */
+export function signedUpText(text: string) {
   const date = new Date(text)
   if (!text || Number.isNaN(date.getTime())) return null
-  return {
-    date: date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
-    time: date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-  }
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const hour = date.getHours() % 12 || 12
+  return `${pad(date.getMonth() + 1)}/${pad(date.getDate())}/${date.getFullYear()} ${pad(hour)}:${pad(date.getMinutes())} ${date.getHours() < 12 ? 'AM' : 'PM'}`
 }
 
 /** "WeChat ID" → "WeChat": the header, less the words that only say it's an ID. */

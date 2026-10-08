@@ -22,8 +22,8 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   at the door, people moved by hand), so edits made in that tab are overwritten.
 
 - Each sheet also has a **Sign-ups** page (switch between it and Check-in under the sheet's title)
-  for reaching people before the event: everyone in the tab, newest first, filtered by contact
-  status. Changing someone's status writes it straight into the tab's Contact Status column (in
+  for reaching people before the event: everyone in the tab, newest first (signed up as
+  MM/dd/YYYY hh:mm AM/PM, under column names), filtered by contact status. Changing someone's status writes it straight into the tab's Contact Status column (in
   the sheet's own spelling, e.g. its dropdown's) and into the app. **Text**, **Call** and **Email**
   open your phone's or computer's own app with a message you set under **Message** (kept on that
   device), and move people who hadn't been contacted to *Awaiting response*. Both views list the
@@ -41,11 +41,12 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   - Keeps the timestamp in column A and puts **Contact Status**, **New or Returning** and **Group
     Chat Status** in B, C and D (adding them, or moving them there from wherever they were), and
     **Contacted At** after the last column.
-  - Gives those three columns single-select dropdowns colored like the app. The Sheets API can't
-    choose a dropdown's display style, so to see them as chips, once per sheet: select columns B–D,
-    open Data → Data validation, and for each rule set Advanced options → Display style to *Chip*.
-    The app only sets the dropdowns again for a new layout or version, which puts them back to
-    arrows. (It no longer tries making the sign-ups a Google Sheets table; that ran into Google errors.)
+  - Gives those three columns single-select dropdowns, colored like the app, shown as chips. The
+    API can't set a plain dropdown's display style, so the app makes a Google Sheets table with
+    that dropdown on a hidden scratch tab, pastes its rule over the column (a pasted rule keeps its
+    chip style), and deletes the scratch tab, all in one request. If Google turns that down they
+    fall back to arrow dropdowns; Data → Data validation → Advanced options → Display style:
+    *Chip* switches them by hand. The dropdowns are only set again by a new layout or version.
   - Removes the empty rows under the last sign-up.
   - Fills blank Contact Status with *Not Contacted*.
   - Fills New or Returning by looking each person up in the spreadsheet's **Student Database** tab
@@ -71,7 +72,8 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
     sign-up's show-up rate by status, plus walk-ins, against the capacity), Overview, Contact
     status, Group chats, Gender & level, and New vs returning, with counts and percentages, the
     statuses colored like their dropdowns. Two empty rows separate the block from the sheet's
-    header.
+    header. Everything under the title row is a row group, so the − / + beside the title hides or
+    shows it.
 
   None of these columns are sent to the server. The Sign-ups page sets Group Chat Status from a
   dropdown on each row, and the **Add to chats** filter lists the confirmed people who asked to be
