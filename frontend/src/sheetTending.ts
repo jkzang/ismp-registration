@@ -60,10 +60,11 @@ export type Turnout = Pick<SeatingPlan, 'show_up_rates' | 'walk_in_rate'> & {
 
 /**
  * Bumped when a new version of the app has to redo what an earlier one wrote: the columns' dropdowns
- * and colors are set again, and the group chat statuses the first version got wrong are corrected.
- * The version a tab was last tended with is kept in the tab's developer metadata (invisible).
+ * and colors and the stats are set again. The version a tab was last tended with is kept in the tab's
+ * developer metadata (invisible). 2 corrected the first version's group chat statuses; 3 made the
+ * dropdowns chips and the stats collapsible.
  */
-export const TEND_VERSION = 2
+export const TEND_VERSION = 3
 
 export type StatCell = {
   text: string
@@ -247,7 +248,7 @@ export function statsBlock(people: Person[], hasDatabase: boolean, updated: stri
   const block: StatCell[][] = Array.from({ length: STATS_ROWS }, () => [])
   block[0] = [
     {
-      text: `${STATS_TITLE}  ·  expected attendance ${expected ? expected.total : '—'}  ·  ${people.length} signed up  ·  updated ${updated} by ISMP Registration`,
+      text: `${STATS_TITLE}  ·  expected attendance ${expected ? expected.total : '—'}  ·  ${people.length} signed up  ·  updated ${updated} by ISMP Registration  ·  − / + on the left hides or shows these`,
       style: 'heading',
     },
   ]
@@ -393,7 +394,7 @@ export function planTending(
     let groupChat = c.groupChat
     const starting = startingChat(c)
     const firstVersionGuess =
-      upgrading &&
+      version < 2 &&
       ((c.chatAnswer === 'add' && groupChat === 'declined') || (c.chatAnswer !== 'add' && groupChat === 'not_invited' && starting !== 'not_invited'))
     if (!cell(row, col.groupChat) || firstVersionGuess) {
       groupChat = starting

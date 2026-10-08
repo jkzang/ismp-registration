@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseSheet } from './sheetParser'
-import { dialable, fillMessage, mailtoHref, readContacts, signedUpWithin, smsHref, statusText } from './signupTracker'
+import { dialable, fillMessage, mailtoHref, readContacts, signedUpText, signedUpWithin, smsHref, statusText } from './signupTracker'
 
 const values = [
   ['Timestamp', 'First & Last Name', 'Nickname', 'Phone Number', 'Email', 'Contact Status'],
@@ -83,5 +83,13 @@ describe('answers', () => {
       { name: 'Name' },
     )
     expect(contacts[0].answers).toEqual([{ label: 'Major', value: 'Biology' }])
+  })
+})
+
+describe('signedUpText', () => {
+  it('reads as MM/dd/YYYY hh:mm AM/PM', () => {
+    expect(signedUpText('10/8/2026 15:04:00')).toBe('10/08/2026 03:04 PM')
+    expect(signedUpText('1/2/2026 0:30:00')).toBe('01/02/2026 12:30 AM')
+    expect(signedUpText('sometime')).toBeNull()
   })
 })

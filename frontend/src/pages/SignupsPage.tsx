@@ -16,7 +16,7 @@ import {
   fillMessage,
   mailtoHref,
   SIGNED_UP_RANGES,
-  signedUpParts,
+  signedUpText,
   signedUpWithin,
   smsHref,
   STATUS_GROUPS,
@@ -427,24 +427,27 @@ export function SignupsPage() {
           {!read.columns.phone && !read.columns.email && (
             <p className="signups-note">No phone or email column found, so there’s no one to text or email.</p>
           )}
+          {/* Lined up with the list's columns; on a phone, where each row wraps, they're hidden. */}
+          <div className="signups-columns" aria-hidden="true">
+            <span className="signup-when">Signed up</span>
+            <span className="signup-person">Name</span>
+            <span className="signup-controls">
+              <span className="signups-column-chat">Group chat</span>
+              <span className="signups-column-status">Contact status</span>
+              <span className="signup-actions">Reach out</span>
+            </span>
+          </div>
           <ul className="signups-list">
             {shown.map((c) => {
               const status = statusOfContact(c)
               const groupChat = groupChatOf(c)
               const message = fillMessage(template, c, event)
               const phone = dialable(c.phone)
-              const when = signedUpParts(c.signedUp)
+              const when = signedUpText(c.signedUp)
               return (
                 <li key={c.key} className={pending.has(c.key) || pendingChat.has(c.key) ? 'is-saving' : ''}>
                   <div className="signup-when" title={c.signedUp || undefined}>
-                    {when ? (
-                      <>
-                        <span className="signup-date">{when.date}</span>
-                        <span className="signup-time">{when.time}</span>
-                      </>
-                    ) : (
-                      <span className="signup-time">{c.signedUp || '—'}</span>
-                    )}
+                    {when ?? (c.signedUp || '—')}
                   </div>
                   <div className="signup-person">
                     <button type="button" className="signup-name" onClick={() => setOpenKey(c.key)} aria-haspopup="dialog">
