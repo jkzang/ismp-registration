@@ -10,6 +10,7 @@ import {
   type SeatingTable,
   type Simulation,
   type TableMember,
+  TABLE_GROUPS,
 } from '../types'
 import { useUndo } from '../undo'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -24,19 +25,6 @@ const UNASSIGNED = 'unassigned'
 
 type Key = `${TableMember['kind']}:${number}`
 const keyOf = (m: { kind: TableMember['kind']; id: number }): Key => `${m.kind}:${m.id}`
-
-// A coed table is always one level, so there's no "Coed Any".
-const GROUP_OPTIONS: { value: string; label: string }[] = [
-  { value: 'female:undergrad', label: 'Girls UG' },
-  { value: 'female:grad', label: 'Girls Grad' },
-  { value: 'female:', label: 'Girls Any' },
-  { value: 'male:undergrad', label: 'Guys UG' },
-  { value: 'male:grad', label: 'Guys Grad' },
-  { value: 'male:', label: 'Guys Any' },
-  { value: 'coed:undergrad', label: 'Coed UG' },
-  { value: 'coed:grad', label: 'Coed Grad' },
-  { value: ':', label: 'No group' },
-]
 
 /** Why a table can't take one more of this kind, or null if it can. */
 function fullReason(table: SeatingTable, kind: TableMember['kind']): string | null {
@@ -644,7 +632,7 @@ export function TablesBoard({ sheetId, plan: savedPlan, setPlan, signupsChanged,
                   disabled={!!simulation}
                   aria-label={`Group for ${table.name}`}
                 >
-                  {GROUP_OPTIONS.map((o) => (
+                  {TABLE_GROUPS.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>

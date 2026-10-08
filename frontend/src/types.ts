@@ -73,6 +73,19 @@ export const CONTACT_STATUSES: { value: ContactStatus; label: string }[] = [
   { value: 'not_inviting', label: 'Not inviting' },
 ]
 
+// A coed table is always one level, so there's no "Coed Any".
+export const TABLE_GROUPS: { value: string; label: string }[] = [
+  { value: 'female:undergrad', label: 'Girls UG' },
+  { value: 'female:grad', label: 'Girls Grad' },
+  { value: 'female:', label: 'Girls Any' },
+  { value: 'male:undergrad', label: 'Guys UG' },
+  { value: 'male:grad', label: 'Guys Grad' },
+  { value: 'male:', label: 'Guys Any' },
+  { value: 'coed:undergrad', label: 'Coed UG' },
+  { value: 'coed:grad', label: 'Coed Grad' },
+  { value: ':', label: 'No group' },
+]
+
 export type TableMember = { kind: 'student' | 'mentor'; id: number; locked: boolean }
 
 export type SeatingTable = {
