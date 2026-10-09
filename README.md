@@ -99,13 +99,24 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   server. See `frontend/src/sheetParser.ts`. The Sign-ups page shows phone numbers and emails by
   reading the sheet in the browser each time; they stay in that tab's memory
   (`frontend/src/signupTracker.ts`).
-- Google access tokens stay in the browser tab's memory; the server never sees them.
+- Google access tokens stay in the browser tab's memory; the server never sees them. In the Mac
+  app, Google's refresh token is kept by the app, encrypted with the Mac's Keychain, and the page
+  only gets short-lived access tokens from it.
 - The app uses the `drive.file` scope, so it can open only spreadsheets someone picks in the
   picker.
 - For volunteers, only the Google account id and display name are stored, not the email.
 - Imports are deleted `SIGNUP_RETENTION_DAYS` (default 30) after their last import or re-sync.
   This runs whenever the sheet list loads; `python manage.py purge_expired_sheets` does the same
   by hand (Render's free plan has no cron jobs).
+
+## Mac app
+
+`desktop/` is a Mac app that shows the hosted web app in its own window, the way Slack's and VS
+Code's desktop apps do: the pages come from the server, so it looks and works the same and picks up
+each deploy by itself. Google won't sign in inside an app window, so there the **Sign in with
+Google** button opens Google in the default browser and comes back to the app when it's done; one
+sign-in covers Sheets access too, and it lasts until you sign out. Text, Call, Email and links to
+Google Sheets open in the Mac's own apps. Setup and building the `.dmg`: `desktop/README.md`.
 
 ## Google Cloud setup (one time)
 
@@ -122,6 +133,7 @@ Use a personal Google Cloud project. No org project is needed.
    Copy the client ID → `GOOGLE_CLIENT_ID`.
 5. **Credentials → Create credentials → API key**. Restrict it to the *Google Picker API* and to
    HTTP referrers `http://localhost:5173/*` (plus production later) → `GOOGLE_API_KEY`.
+6. Only for the Mac app: a second OAuth client of type *Desktop app*. See `desktop/README.md`.
 
 ## Local development
 

@@ -4,8 +4,12 @@
  * Access tokens stay in this tab (memory and sessionStorage, so a reload doesn't need Google's popup
  * again) and are never sent to our server. The app asks only for the drive.file scope, so it can
  * read (and write to) just the spreadsheets someone picks in the Google Picker.
+ *
+ * In the Mac app (desktop.ts) Google's popups can't open, so sign-in and access tokens come from
+ * the app instead, which signs in through the system browser and keeps the refresh token itself.
  */
 import { checkInTabTitle, type CheckInLayout } from './checkInTab'
+import { desktop } from './desktop'
 import { parseSheet, type ContactStatus, type FieldMap } from './sheetParser'
 import { formatStamp, groupChatLabel, groupChatOf, type GroupChatStatus } from './signupColumns'
 import { STATS_ROWS, TEND_VERSION, type StatCell, type Tending } from './sheetTending'
@@ -58,8 +62,27 @@ export async function renderSignInButton(el: HTMLElement, config: AppConfig, onC
   google.accounts.id.renderButton(el, { type: 'standard', theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with' })
 }
 
+/**
+ * The Mac app's sign-in: Google's page opens in the system browser, and this resolves once it's done
+ * there, with the ID token for our server (null if it was cancelled). It brings Sheets access too.
+ */
+export async function signInOnDesktop(config: AppConfig): Promise<string | null> {
+  const result = await desktop!.signIn(config.allowed_domain)
+  if (!result.ok) {
+    if (result.reason === 'cancelled') return null
+    throw new Error(result.error)
+  }
+  setToken({ value: result.accessToken, expiresAt: result.expiresAt })
+  return result.idToken
+}
+
+export function cancelDesktopSignIn() {
+  void desktop?.cancelSignIn()
+}
+
 export function signOutOfGoogle() {
   setToken(null)
+  if (desktop) void desktop.signOut()
   if (typeof google !== 'undefined') google.accounts.id.disableAutoSelect()
 }
 
@@ -90,9 +113,11 @@ export class NeedsSignInError extends Error {}
 /**
  * Opens Google's consent popup the first time; call it from a click so the popup isn't blocked.
  * With `interactive: false` it never opens the popup, and throws NeedsSignInError instead.
+ * In the Mac app the app hands over tokens, and only opens the browser when it has none.
  */
 export async function getAccessToken(config: AppConfig, { interactive = true } = {}): Promise<string> {
   if (token && token.expiresAt > Date.now() + 60_000) return token.value
+  if (desktop) return desktopAccessToken(config, interactive)
   if (!interactive) throw new NeedsSignInError('Sign in to Google to reach the sheet.')
   await loadIdentity()
   return new Promise((resolve, reject) => {
@@ -113,6 +138,13 @@ export async function getAccessToken(config: AppConfig, { interactive = true } =
     })
     client.requestAccessToken({ prompt: '' })
   })
+}
+
+async function desktopAccessToken(config: AppConfig, interactive: boolean): Promise<string> {
+  const result = await desktop!.accessToken(interactive, config.allowed_domain)
+  if (!result.ok) throw result.reason === 'needs-sign-in' ? new NeedsSignInError(result.error) : new Error(result.error)
+  setToken({ value: result.accessToken, expiresAt: result.expiresAt })
+  return result.accessToken
 }
 
 export type PickedFile = { id: string; name: string }
