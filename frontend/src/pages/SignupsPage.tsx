@@ -3,6 +3,8 @@ import { api, errorMessage } from '../api'
 import { useApp } from '../appContext'
 import { ChartIcon, MailIcon, MessageIcon, PhoneIcon, SearchIcon } from '../components/icons'
 import { ColumnHeader } from '../components/ColumnHeader'
+import { MessageMenu } from '../components/MessageMenu'
+import { MessagesDialog } from '../components/MessagesDialog'
 import { GENDER_LABELS, LEVEL_LABELS, SignupPersonDialog } from '../components/SignupPersonDialog'
 import { OverviewDialog } from '../components/SignupsOverview'
 import { StatusChangedError, writeGroupChat, writeStatus } from '../google'
@@ -12,16 +14,17 @@ import { DEFAULT_SORT, isFiltered, optionCounts, passes, sortRows, TO_ADD, type 
 import { overviewOf, type OverviewPlan } from '../signupOverview'
 import {
   BEFORE_CONTACT,
-  DEFAULT_MESSAGE,
+  DEFAULT_MESSAGES,
   dialable,
   fillMessage,
   mailtoHref,
+  messageItems,
   signedUpText,
   smsHref,
   telHref,
   type Contact,
 } from '../signupTracker'
-import { CONTACT_STATUSES, sheetName, type ContactStatus, type SeatingPlan } from '../types'
+import { CONTACT_STATUSES, eventName, sheetName, type ContactStatus, type SeatingPlan } from '../types'
 import { useUndo } from '../undo'
 
 type PlanInfo = Omit<OverviewPlan, 'students'>
@@ -33,30 +36,38 @@ const planInfo = ({ mentors, excluded_mentor_ids, show_up_rates, walk_in_rate, i
   ideal_per_mentor,
 })
 
-/** The Text and Email message, kept per sheet in this browser only. */
-function useMessageTemplate(sheetId: number) {
-  const key = `signup-message-${sheetId}`
-  const [template, setTemplate] = useState(DEFAULT_MESSAGE)
+// How long someone who just came in from the sheet stays highlighted.
+const ARRIVAL_MS = 6000
+
+/** The confirmation texts Text and Email start with, kept per sheet in this browser only. The
+ *  first keeps the key it had when there was only one message. */
+function useMessageTemplates(sheetId: number) {
+  const keys = useMemo(() => [`signup-message-${sheetId}`, `signup-message-2-${sheetId}`], [sheetId])
+  const [templates, setTemplates] = useState<readonly string[]>(DEFAULT_MESSAGES)
   useEffect(() => {
-    try {
-      setTemplate(localStorage.getItem(key) ?? DEFAULT_MESSAGE)
-    } catch {
-      setTemplate(DEFAULT_MESSAGE)
-    }
-  }, [key])
+    setTemplates(
+      keys.map((key, i) => {
+        try {
+          return localStorage.getItem(key) ?? DEFAULT_MESSAGES[i]
+        } catch {
+          return DEFAULT_MESSAGES[i]
+        }
+      }),
+    )
+  }, [keys])
   const save = useCallback(
-    (next: string) => {
-      setTemplate(next)
+    (index: number, next: string) => {
+      setTemplates((t) => t.map((text, i) => (i === index ? next : text)))
       try {
-        if (next === DEFAULT_MESSAGE) localStorage.removeItem(key)
-        else localStorage.setItem(key, next)
+        if (next === DEFAULT_MESSAGES[index]) localStorage.removeItem(keys[index])
+        else localStorage.setItem(keys[index], next)
       } catch {
         // Only a convenience; it just won't be remembered.
       }
     },
-    [key],
+    [keys],
   )
-  return [template, save] as const
+  return [templates, save] as const
 }
 
 /**
@@ -69,7 +80,7 @@ function useMessageTemplate(sheetId: number) {
 export function SignupsPage() {
   const { config } = useApp()
   const { push, notify } = useUndo()
-  const { sheet, plan: fullPlan, setPlan: setFullPlan, read, setRead, access, tendError, readSheet, queue, writes, setError } = useSheet()
+  const { sheet, setSheet, plan: fullPlan, setPlan: setFullPlan, read, setRead, access, tendError, readSheet, queue, writes, setError } = useSheet()
   const sheetId = sheet.id
   const students = fullPlan.students
   const plan = planInfo(fullPlan)
@@ -83,8 +94,13 @@ export function SignupsPage() {
   // Each column header's ticked values, and the column the list is sorted by.
   const [filters, setFilters] = useState<Filters>({})
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT)
-  const [editingMessage, setEditingMessage] = useState(false)
-  const [template, setTemplate] = useMessageTemplate(sheetId)
+  const [editingMessages, setEditingMessages] = useState(false)
+  const [templates, setTemplate] = useMessageTemplates(sheetId)
+  // Who just came in from the sheet and showed under the filters then, to pop in at their place.
+  const [arrived, setArrived] = useState<Set<string>>(new Set())
+  const known = useRef<{ sheetId: number; keys: Set<string> } | null>(null)
+  const shownKeys = useRef<Set<string>>(new Set())
+  const arrivalTimers = useRef<number[]>([])
 
   const sheetRef = useRef(sheet)
   sheetRef.current = sheet
@@ -219,7 +235,33 @@ export function SignupsPage() {
 
   const connect = () => readSheet(true)
 
-  const event = sheetName(sheet)
+  // New rows are added to the sheet by hand and come in with the background read. The first read of
+  // a sheet only learns who's there; after that, anyone new that the search and filters show is
+  // highlighted for a few seconds. Those they hide just show up, unmarked, once the filters change.
+  const contactKeys = read?.contacts.map((c) => c.key).join('\n')
+  useEffect(() => {
+    if (contactKeys === undefined) return
+    const keys = new Set(contactKeys ? contactKeys.split('\n') : [])
+    const before = known.current
+    known.current = { sheetId, keys }
+    if (!before || before.sheetId !== sheetId) return
+    const fresh = [...keys].filter((k) => !before.keys.has(k) && shownKeys.current.has(k))
+    if (fresh.length === 0) return
+    setArrived((a) => new Set([...a, ...fresh]))
+    arrivalTimers.current.push(
+      window.setTimeout(() => {
+        setArrived((a) => {
+          const next = new Set(a)
+          for (const k of fresh) next.delete(k)
+          return next
+        })
+      }, ARRIVAL_MS),
+    )
+  }, [contactKeys, sheetId])
+  useEffect(() => () => arrivalTimers.current.forEach((t) => clearTimeout(t)), [])
+
+  // {event} in the messages, and the emails' subject.
+  const event = eventName(sheet)
   const contacts = read?.contacts ?? []
   const q = query.trim().toLowerCase()
   const qDigits = q.replace(/\D/g, '')
@@ -239,6 +281,8 @@ export function SignupsPage() {
     searched.map((contact, index) => ({ contact, index })).filter((r) => passes(r.contact, filters, now)),
     sort,
   ).map((r) => r.contact)
+  shownKeys.current = new Set(shown.map((c) => c.key))
+  const messagesFor = (c: Contact) => templates.map((t) => fillMessage(t, c, event))
   /** A column's header, with counts among who the search and the other columns let through. */
   const header = (id: ColumnId, className: string, end?: boolean) => (
     <ColumnHeader
@@ -279,7 +323,7 @@ export function SignupsPage() {
           <OverviewDialog
             open={overviewOpen}
             onClose={() => setOverviewOpen(false)}
-            title={event}
+            title={sheetName(sheet)}
             overview={overview}
             capacity={sheet.capacity}
             columns={read.columns}
@@ -297,71 +341,21 @@ export function SignupsPage() {
               status={person ? statusOfContact(person) : 'not_contacted'}
               groupChat={person ? groupChatOf(person) : null}
               event={event}
-              message={person ? fillMessage(template, person, event) : ''}
+              messages={person ? messagesFor(person) : []}
               onContacted={contacted}
               onClose={() => setOpenKey(null)}
             />
           )
         })()}
+        <MessagesDialog
+          open={editingMessages}
+          sheet={sheet}
+          onSheetSaved={setSheet}
+          templates={templates}
+          onChange={setTemplate}
+          onClose={() => setEditingMessages(false)}
+        />
         <section className="signups" aria-label="Sign-ups">
-          <div className="signups-top">
-            <label className="checkin-search">
-              <SearchIcon />
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search"
-                aria-label="Search by name, nickname, phone, email or social media ID"
-              />
-            </label>
-            <div className="signups-tools">
-              <button
-                type="button"
-                className="with-icon"
-                aria-haspopup="dialog"
-                onClick={() => setOverviewOpen(true)}
-                disabled={!overview}
-                title="Turnout, mentors, statuses, how people heard and group chats"
-              >
-                <ChartIcon /> Overview
-              </button>
-              <button
-                type="button"
-                className={`icon-button tool-button${editingMessage ? ' is-on' : ''}`}
-                aria-expanded={editingMessage}
-                aria-label="Message"
-                onClick={() => setEditingMessage((open) => !open)}
-                title="The message Text and Email start with"
-              >
-                <MessageIcon />
-              </button>
-            </div>
-            {isFiltered(filters) && (
-              <button type="button" className="link-button signups-clear" onClick={clearFilters}>
-                Clear filters
-              </button>
-            )}
-            {editingMessage && (
-              <div className="message-editor">
-                <label>
-                  <span>Message for Text and Email</span>
-                  <textarea rows={3} value={template} onChange={(e) => setTemplate(e.target.value)} />
-                </label>
-                <div className="message-editor-foot">
-                  <p className="muted">
-                    <code>{'{first}'}</code> is their nickname or first name, <code>{'{name}'}</code> their full name and{' '}
-                    <code>{'{event}'}</code> “{event}”. Kept on this device only.
-                  </p>
-                  {template !== DEFAULT_MESSAGE && (
-                    <button type="button" className="link-button" onClick={() => setTemplate(DEFAULT_MESSAGE)}>
-                      Reset
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
           {tendError && (
             <p className="signups-note">{tendError}</p>
           )}
@@ -371,20 +365,62 @@ export function SignupsPage() {
           {!read.columns.phone && !read.columns.email && (
             <p className="signups-note">No phone or email column found, so there’s no one to text or email.</p>
           )}
-          {/* Lined up with the list's columns; on a phone, where each row wraps, they wrap too. */}
-          <div className="signups-columns">
-            {header('signedUp', 'signup-when')}
-            {header('name', 'signup-person')}
-            <div className="signup-details">
-              {header('gender', 'signup-gender')}
-              {header('level', 'signup-level')}
-              {header('returning', 'signup-returning')}
+          {/* The search, tools and column names stay at the top while the list scrolls. */}
+          <div className="signups-head">
+            <div className="signups-top">
+              <label className="checkin-search">
+                <SearchIcon />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search names"
+                  aria-label="Search by name, nickname, phone, email or social media ID"
+                />
+              </label>
+              <div className="signups-tools">
+                <button
+                  type="button"
+                  className="with-icon"
+                  aria-haspopup="dialog"
+                  onClick={() => setOverviewOpen(true)}
+                  disabled={!overview}
+                  title="Turnout, mentors, statuses, how people heard and group chats"
+                >
+                  <ChartIcon /> Overview
+                </button>
+                <button
+                  type="button"
+                  className="icon-button tool-button"
+                  aria-haspopup="dialog"
+                  aria-label="Messages"
+                  onClick={() => setEditingMessages(true)}
+                  title="The confirmation texts Text and Email start with"
+                >
+                  <MessageIcon />
+                </button>
+              </div>
+              {isFiltered(filters) && (
+                <button type="button" className="link-button signups-clear" onClick={clearFilters}>
+                  Clear filters
+                </button>
+              )}
             </div>
-            <div className="signup-controls">
-              {header('groupChat', 'signups-column-chat', true)}
-              {header('status', 'signups-column-status', true)}
-              <div className="column-header signup-actions">
-                <span className="column-name">Reach out</span>
+            {/* Lined up with the list's columns; on a phone, where each row wraps, they wrap too. */}
+            <div className="signups-columns">
+              {header('signedUp', 'signup-when')}
+              {header('name', 'signup-person')}
+              <div className="signup-details">
+                {header('gender', 'signup-gender')}
+                {header('level', 'signup-level')}
+                {header('returning', 'signup-returning')}
+              </div>
+              <div className="signup-controls">
+                {header('groupChat', 'signups-column-chat', true)}
+                {header('status', 'signups-column-status', true)}
+                <div className="column-header signup-actions">
+                  <span className="column-name">Reach out</span>
+                </div>
               </div>
             </div>
           </div>
@@ -392,11 +428,15 @@ export function SignupsPage() {
             {shown.map((c) => {
               const status = statusOfContact(c)
               const groupChat = groupChatOf(c)
-              const message = fillMessage(template, c, event)
+              const messages = messagesFor(c)
+              const isNew = arrived.has(c.key)
               const phone = dialable(c.phone)
               const when = signedUpText(c.signedUp)
               return (
-                <li key={c.key} className={pending.has(c.key) || pendingChat.has(c.key) ? 'is-saving' : ''}>
+                <li
+                  key={c.key}
+                  className={[pending.has(c.key) || pendingChat.has(c.key) ? 'is-saving' : '', isNew ? 'is-new' : ''].filter(Boolean).join(' ')}
+                >
                   <div className="signup-when" title={c.signedUp || undefined}>
                     {when ?? (c.signedUp || '—')}
                   </div>
@@ -404,6 +444,7 @@ export function SignupsPage() {
                     <button type="button" className="signup-name" onClick={() => setOpenKey(c.key)} aria-haspopup="dialog">
                       {c.name}
                       {c.nickname && <span className="checkin-nickname">“{c.nickname}”</span>}
+                      {isNew && <span className="new-badge">New</span>}
                     </button>
                   </div>
                   <div className="signup-details">
@@ -460,9 +501,16 @@ export function SignupsPage() {
                     </select>
                     <div className="signup-actions">
                       {phone && (
-                        <a className="icon-button" href={smsHref(c.phone, message)} onClick={() => contacted(c)} title={`Text ${c.phone}`} aria-label={`Text ${c.name}`}>
+                        <MessageMenu
+                          className="icon-button"
+                          label={`Text ${c.name}`}
+                          title={`Text ${c.phone}`}
+                          items={messageItems(messages, (m) => smsHref(c.phone, m))}
+                          end
+                          onPick={() => contacted(c)}
+                        >
                           <MessageIcon />
-                        </a>
+                        </MessageMenu>
                       )}
                       {phone && (
                         <a className="icon-button" href={telHref(c.phone)} onClick={() => contacted(c)} title={`Call ${c.phone}`} aria-label={`Call ${c.name}`}>
@@ -470,15 +518,16 @@ export function SignupsPage() {
                         </a>
                       )}
                       {c.email.includes('@') && (
-                        <a
+                        <MessageMenu
                           className="icon-button"
-                          href={mailtoHref(c.email, event, message)}
-                          onClick={() => contacted(c)}
+                          label={`Email ${c.name}`}
                           title={`Email ${c.email}`}
-                          aria-label={`Email ${c.name}`}
+                          items={messageItems(messages, (m) => mailtoHref(c.email, event, m))}
+                          end
+                          onPick={() => contacted(c)}
                         >
                           <MailIcon />
-                        </a>
+                        </MessageMenu>
                       )}
                     </div>
                   </div>

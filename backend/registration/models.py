@@ -79,6 +79,8 @@ class SignupSheet(models.Model):
     tab_title = models.CharField(max_length=200)
     # What the organizers call it; blank shows the tab's title.
     name = models.CharField(max_length=200, blank=True)
+    # The event as the confirmation texts put it ({event}); asked for at import. Blank uses the name above.
+    event_name = models.CharField(max_length=200, blank=True)
     # Standard field -> the sheet's column header it came from, so a re-sync reads the same columns.
     field_map = models.JSONField(default=dict)
     # What the browser noticed about the tab's formatting at the last import or re-sync, in plain words.

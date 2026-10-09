@@ -1,8 +1,9 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { groupChatLabel, RETURNING_LABELS, type GroupChatStatus } from '../signupColumns'
-import { dialable, mailtoHref, shortTimestamp, smsHref, socialLabel, telHref, type Contact } from '../signupTracker'
+import { dialable, mailtoHref, messageItems, shortTimestamp, smsHref, socialLabel, telHref, type Contact } from '../signupTracker'
 import { CONTACT_STATUSES, type ContactStatus } from '../types'
 import { CloseIcon, MailIcon, MessageIcon, PhoneIcon } from './icons'
+import { MessageMenu } from './MessageMenu'
 
 export const GENDER_LABELS = { female: 'Girl', male: 'Guy' } as const
 export const LEVEL_LABELS = { undergrad: 'Undergrad', grad: 'Grad', other: 'Not a student' } as const
@@ -31,12 +32,13 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
  * Everything someone put on the form, opened from their name on the Sign-ups page. Texting,
  * calling or emailing from here counts as reaching out, as it does from the list.
  */
-export function SignupPersonDialog({ contact, status, groupChat, event, message, onContacted, onClose }: {
+export function SignupPersonDialog({ contact, status, groupChat, event, messages, onContacted, onClose }: {
   contact: Contact | null
   status: ContactStatus
   groupChat: GroupChatStatus | null
   event: string
-  message: string
+  /** The confirmation texts, filled in for them. */
+  messages: string[]
   onContacted: (contact: Contact) => void
   onClose: () => void
 }) {
@@ -81,9 +83,14 @@ export function SignupPersonDialog({ contact, status, groupChat, event, message,
             {(phone || contact.email.includes('@')) && (
               <div className="person-actions">
                 {phone && (
-                  <a className="person-action" href={smsHref(contact.phone, message)} onClick={() => onContacted(contact)}>
+                  <MessageMenu
+                    className="person-action"
+                    label={`Text ${contact.name}`}
+                    items={messageItems(messages, (m) => smsHref(contact.phone, m))}
+                    onPick={() => onContacted(contact)}
+                  >
                     <MessageIcon /> Text
-                  </a>
+                  </MessageMenu>
                 )}
                 {phone && (
                   <a className="person-action" href={telHref(contact.phone)} onClick={() => onContacted(contact)}>
@@ -91,9 +98,14 @@ export function SignupPersonDialog({ contact, status, groupChat, event, message,
                   </a>
                 )}
                 {contact.email.includes('@') && (
-                  <a className="person-action" href={mailtoHref(contact.email, event, message)} onClick={() => onContacted(contact)}>
+                  <MessageMenu
+                    className="person-action"
+                    label={`Email ${contact.name}`}
+                    items={messageItems(messages, (m) => mailtoHref(contact.email, event, m))}
+                    onPick={() => onContacted(contact)}
+                  >
                     <MailIcon /> Email
-                  </a>
+                  </MessageMenu>
                 )}
               </div>
             )}

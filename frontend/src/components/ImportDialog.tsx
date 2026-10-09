@@ -42,6 +42,7 @@ export function ImportDialog({ start, onClose, onImported }: {
   const [error, setError] = useState<string | null>('error' in start ? start.error : null)
   // Kept across a change of tab or spreadsheet, so they're only typed once.
   // Most sheets are imported on the day, shortly before the event: today, at the next full hour.
+  const [eventName, setEventName] = useState('')
   const [startsAt, setStartsAt] = useState(() => toLocalInput(nextHour()))
   const [capacity, setCapacity] = useState('')
   const [mentorsAbsent, setMentorsAbsent] = useState<'no' | 'yes'>('no')
@@ -111,7 +112,7 @@ export function ImportDialog({ start, onClose, onImported }: {
   }
 
   // Reads the tab and imports it as is: the header row and columns are found automatically.
-  async function importTab(file: PickedFile, title: string, tabs: Tab[], tab: Tab, event: { starts_at: string; capacity: number; absent_mentor_ids: number[] }) {
+  async function importTab(file: PickedFile, title: string, tabs: Tab[], tab: Tab, event: { event_name: string; starts_at: string; capacity: number; absent_mentor_ids: number[] }) {
     setStages([`Reading “${tab.title}” from Google Sheets and adding its status columns and statistics`])
     // Adds Contact Status, New or Returning, Group Chat Status, Contacted At and the stats block.
     const data = await readTended(config, { spreadsheet_id: file.id, tab_id: tab.id, field_map: {} }, async () => ({
@@ -210,12 +211,14 @@ export function ImportDialog({ start, onClose, onImported }: {
     const people = Number(capacity)
     const starts = new Date(startsAt)
     // The inputs are `required` too; this catches what the browser's own check lets through.
+    if (!eventName.trim()) return setError('Enter the event’s name.')
     if (!startsAt || Number.isNaN(starts.getTime())) return setError('Enter the date and time of the event.')
     if (!Number.isInteger(people) || people < 1) return setError('Enter the event’s capacity as a whole number, 1 or more.')
     if (mentorsAbsent === 'yes' && !absentIds.length) return setError('Choose the mentors who’ll be absent, or choose No.')
     if (mentorsAbsent === 'yes' && query.trim()) return setError(`Choose a mentor for “${query.trim()}”, or clear the search.`)
     run('Importing…', () =>
       importTab(step.file, step.title, step.tabs, step.tab, {
+        event_name: eventName.trim(),
         starts_at: starts.toISOString(),
         capacity: people,
         absent_mentor_ids: mentorsAbsent === 'yes' ? absentIds : [],
@@ -279,13 +282,27 @@ export function ImportDialog({ start, onClose, onImported }: {
               )}
             </p>
             <label className="import-field">
+              <span>What’s the event called?</span>
+              <input
+                type="text"
+                className="import-field-wide"
+                value={eventName}
+                onChange={(e) => setEventName(e.target.value)}
+                placeholder="e.g. ISMP Game Night"
+                maxLength={200}
+                required
+                autoFocus
+                disabled={!!busy}
+              />
+              <span className="muted import-field-hint">Used for {'{event}'} in the confirmation texts.</span>
+            </label>
+            <label className="import-field">
               <span>When is the event?</span>
               <input
                 type="datetime-local"
                 value={startsAt}
                 onChange={(e) => setStartsAt(e.target.value)}
                 required
-                autoFocus
                 disabled={!!busy}
               />
             </label>
@@ -380,8 +397,8 @@ export function ImportDialog({ start, onClose, onImported }: {
               </div>
             )}
             <p className="muted">
-              All of these can be changed after the import: the date and capacity at the top of the sheet’s page, and
-              mentors on the Tables board.
+              All of these can be changed after the import: the event name in the Sign-ups page’s Messages, the date and
+              capacity at the top of the sheet’s page, and mentors on the Tables board.
             </p>
             <div className="import-details-actions">
               <button type="submit" className="primary" disabled={!!busy}>

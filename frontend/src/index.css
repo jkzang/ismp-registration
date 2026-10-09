@@ -2504,6 +2504,11 @@ button .spinner {
   width: 100%;
 }
 
+.import-field-hint {
+  font-size: 13px;
+  font-weight: 400;
+}
+
 .import-mentor-results {
   margin: 0;
   font-weight: 400;
@@ -2673,6 +2678,10 @@ button .spinner {
 
 /* Sign-ups page */
 
+.messages-dialog .dialog-head h2 {
+  font-size: 18px;
+}
+
 .message-editor {
   display: flex;
   flex-direction: column;
@@ -2696,15 +2705,72 @@ button .spinner {
   resize: vertical;
 }
 
-.message-editor-foot {
+.message-event {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
-.message-editor code {
+.message-event input {
+  height: 38px;
+  padding: 0 12px;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.message-event.has-error input {
+  border-color: var(--error);
+}
+
+.message-event .error {
+  font-weight: 400;
+}
+
+.message-reset {
+  align-self: flex-end;
+  font-size: 13px;
+}
+
+.message-help {
+  font-size: 13px;
+}
+
+.message-help code {
   font-size: 12px;
+}
+
+/* Text and Email ask which message to start with. */
+.message-menu-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.message-menu {
+  min-width: 0;
+  width: min(320px, calc(100vw / var(--ui-scale) - 32px));
+}
+
+.message-option {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-decoration: none;
+}
+
+.message-option-label {
+  font-weight: 700;
+}
+
+.message-option-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
 .signups {
@@ -2770,6 +2836,51 @@ button .spinner {
 
 .signups-list li.is-saving {
   opacity: 0.7;
+}
+
+/* Someone just added to the sheet: they drop in at their place and stay lit for a few seconds. */
+.signups-list li.is-new {
+  animation:
+    signup-drop-in 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both,
+    signup-glow 6s ease-out both;
+}
+
+@keyframes signup-drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+}
+
+@keyframes signup-glow {
+  0%,
+  60% {
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent-fill);
+  }
+  100% {
+    background: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+
+.new-badge {
+  margin-left: 8px;
+  align-self: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--accent-contrast);
+  background: var(--accent-fill);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signups-list li.is-new {
+    animation: signup-glow 6s ease-out both;
+  }
 }
 
 .signups-list li.checkin-empty {
@@ -2842,8 +2953,7 @@ button .spinner {
   }
 }
 
-/* The Sign-ups page scrolls as a whole, so the overview can sit above the list. The search and
-   filters stay at the top. */
+/* The Sign-ups page scrolls as a whole. The search, tools and column names stay at the top. */
 .signups-page {
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -2853,11 +2963,14 @@ button .spinner {
   flex: none;
 }
 
-.signups-page .signups-top {
+.signups-page .signups-head {
   position: sticky;
   top: 0;
   z-index: 2;
-  padding: 4px 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
   background: var(--bg);
 }
 

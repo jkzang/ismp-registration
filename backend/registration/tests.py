@@ -31,7 +31,7 @@ def import_body(rows, **extra):
     return {
         'spreadsheet_id': 'abcdefghij1234567890', 'spreadsheet_title': 'Fall Kickoff', 'tab_id': 0,
         'tab_title': 'Form Responses 1', 'field_map': {'name': 'First & Last Name'}, 'rows': rows,
-        'starts_at': '2026-10-01T19:00:00Z', 'capacity': 60, **extra,
+        'event_name': 'Fall Kickoff', 'starts_at': '2026-10-01T19:00:00Z', 'capacity': 60, **extra,
     }
 
 
@@ -198,8 +198,8 @@ class ImportTests(ApiTestBase):
         self.assertEqual(sorted(sheet.signups.values_list('name', flat=True)), ['Amy Lin', 'Cat', 'Dan'])
         self.assertEqual(response.data['sheet']['tab_title'], 'Renamed')
 
-    def test_import_needs_the_event_start_and_capacity(self):
-        for missing in ('starts_at', 'capacity'):
+    def test_import_needs_the_event_name_start_and_capacity(self):
+        for missing in ('event_name', 'starts_at', 'capacity'):
             body = import_body([row('k1', 'Amy')])
             del body[missing]
             response = self.client.post('/api/sheets/', body, format='json')
@@ -209,6 +209,10 @@ class ImportTests(ApiTestBase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         response = self.client.post('/api/sheets/', import_body([row('k1', 'Amy')], capacity=45), format='json')
         self.assertEqual((response.data['capacity'], response.data['starts_at']), (45, '2026-10-01T19:00:00Z'))
+        response = self.client.post('/api/sheets/', import_body([row('k1', 'Amy')], event_name='  ISMP Game Night '), format='json')
+        self.assertEqual(response.data['event_name'], 'ISMP Game Night')
+        response = self.client.patch(f'/api/sheets/{response.data["id"]}/', {'event_name': 'Game Night'}, format='json')
+        self.assertEqual(response.data['event_name'], 'Game Night')
 
     def test_import_leaves_absent_mentors_out_of_the_first_plan(self):
         here = models.Mentor.objects.create(chapter=self.chapter, name='Mia', gender='female')

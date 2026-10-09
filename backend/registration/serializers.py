@@ -65,7 +65,8 @@ class RowsSerializer(serializers.Serializer):
 class SheetImportSerializer(RowsSerializer):
     spreadsheet_id = serializers.RegexField(r'^[A-Za-z0-9_-]{10,128}$')
     tab_id = serializers.IntegerField(min_value=0)
-    # Asked for at import; both can be changed on the sheet afterwards.
+    # Asked for at import; all can be changed on the sheet afterwards.
+    event_name = serializers.CharField(max_length=200)
     starts_at = serializers.DateTimeField()
     capacity = serializers.IntegerField(min_value=1, max_value=100000)
     # Mentors who won't be there; the first plan leaves them out. Changed on the Tables board afterwards.
@@ -80,13 +81,16 @@ class SheetSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.SignupSheet
         fields = [
-            'id', 'name', 'spreadsheet_id', 'spreadsheet_title', 'tab_id', 'tab_title', 'field_map', 'warnings',
+            'id', 'name', 'event_name', 'spreadsheet_id', 'spreadsheet_title', 'tab_id', 'tab_title', 'field_map', 'warnings',
             'capacity', 'starts_at', 'reserved_released_at', 'imported_at', 'synced_at', 'expires_at', 'imported_by',
             'signup_count',
         ]
-        read_only_fields = [f for f in fields if f not in ('name', 'capacity', 'starts_at', 'reserved_released_at')]
+        read_only_fields = [f for f in fields if f not in ('name', 'event_name', 'capacity', 'starts_at', 'reserved_released_at')]
 
     def validate_name(self, value):
+        return value.strip()
+
+    def validate_event_name(self, value):
         return value.strip()
 
     def get_imported_by(self, sheet):

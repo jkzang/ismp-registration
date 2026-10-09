@@ -184,7 +184,13 @@ export const BEFORE_CONTACT: ContactStatus[] = ['not_contacted', 'waiting_to_con
 /** Their nickname, else their first name. */
 export const firstName = (contact: Pick<Contact, 'name' | 'nickname'>) => contact.nickname || contact.name.split(' ')[0]
 
-export const DEFAULT_MESSAGE = 'Hi {first}! Thanks for signing up for {event}. Are you still able to make it?'
+/** The two texts sent before the event: the first confirmation, then a second one closer to it. */
+export const MESSAGE_LABELS = ['Confirmation text', 'Second confirmation text'] as const
+
+export const DEFAULT_MESSAGES: readonly string[] = [
+  'Hi {first}! Thanks for signing up for {event}. Are you still able to make it?',
+  'Hi {first}! Just checking in again about {event}. Are you still planning to come? Let us know either way so we can save your spot.',
+]
 
 /** The message with {first}, {name} and {event} filled in. */
 export function fillMessage(template: string, contact: Pick<Contact, 'name' | 'nickname'>, event: string) {
@@ -192,6 +198,10 @@ export function fillMessage(template: string, contact: Pick<Contact, 'name' | 'n
     key === 'first' ? firstName(contact) : key === 'name' ? contact.name : event,
   )
 }
+
+/** The filled-in messages as a Text or Email menu's choices, each with its link. */
+export const messageItems = (messages: string[], href: (message: string) => string) =>
+  messages.map((message, i) => ({ label: MESSAGE_LABELS[i], href: href(message), preview: message }))
 
 /** Digits, with a leading + kept, for tel: and sms: links. Empty when it's too short to be a number. */
 export function dialable(phone: string) {
