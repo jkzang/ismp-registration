@@ -154,7 +154,7 @@ export function optionCounts(contacts: Contact[], filters: Filters, column: Colu
   return counts
 }
 
-export function sortRows(rows: Row[], sort: Sort) {
+export function sortRows<R extends Row>(rows: R[], sort: Sort) {
   const key = COLUMNS[sort.column].sortKey
   const sign = sort.dir === 'asc' ? 1 : -1
   return [...rows].sort((a, b) => {
