@@ -24,7 +24,9 @@ browser everything works as before.
 1. **Google Cloud** (the same project as the web app): **APIs & Services → Credentials → Create
    credentials → OAuth client ID**, type **Desktop app**, named e.g. *ISMP Registration Mac*.
    Download its JSON and save it as `desktop/google-client.json`. That file is gitignored, and
-   built into the app.
+   built into the app. An app that was built without it reads the same file from
+   `~/Library/Application Support/ISMP Registration/google-client.json` instead (in Finder,
+   **Go → Go to Folder…**; open the app once first so the folder exists).
 
    Google doesn't treat a desktop client's secret as confidential, because every copy of an
    installed app carries it. It still isn't something to post publicly, so share the built app
