@@ -151,14 +151,13 @@ export function SignupsPage() {
           throw err
         }
         setRead((r) => r && { ...r, contacts: r.contacts.map((c) => (c.key === key ? { ...c, status } : c)) })
+        // The app's copy follows on its own, so the next change in line doesn't wait for it.
         const student = studentByKeyRef.current.get(key)
         if (!student) return
-        try {
-          const { student: saved } = await api.setStatus(student.id, status)
-          setFullPlan((p) => p && { ...p, students: p.students.map((s) => (s.id === saved.id ? saved : s)) })
-        } catch {
-          setError('The status was saved in the sheet; check-in will pick it up within a minute.')
-        }
+        api
+          .setStatus(student.id, status)
+          .then(({ student: saved }) => setFullPlan((p) => p && { ...p, students: p.students.map((s) => (s.id === saved.id ? saved : s)) }))
+          .catch(() => setError('The status was saved in the sheet; check-in will pick it up within a minute.'))
       })
       queue.current = run.catch(() => {})
       try {
@@ -209,49 +208,46 @@ export function SignupsPage() {
 
   const groupChatOf = (contact: Contact) => pendingChat.get(contact.key) ?? contact.groupChat
 
-  async function changeChat(contact: Contact, status: GroupChatStatus) {
+  /** Shows the new status at once and writes it in the background; undoable with Ctrl/Cmd+Z once saved. */
+  function changeChat(contact: Contact, status: GroupChatStatus) {
     const before = groupChatOf(contact)
     if (before === status) return
     setError(null)
-    try {
-      await applyChat(contact.key, status)
-      push({
-        label: `${contact.name}’s group chat status`,
-        // A blank cell is filled in again by the next read, so undo goes back to what it would get.
-        undo: () => applyChat(contact.key, before ?? 'not_invited', status),
-        redo: () => applyChat(contact.key, status, before ?? 'not_invited'),
-      })
-    } catch (err) {
-      setError(errorMessage(err, 'Couldn’t change the group chat status.'))
-    }
+    applyChat(contact.key, status).then(
+      () =>
+        push({
+          label: `${contact.name}’s group chat status`,
+          // A blank cell is filled in again by the next read, so undo goes back to what it would get.
+          undo: () => applyChat(contact.key, before ?? 'not_invited', status),
+          redo: () => applyChat(contact.key, status, before ?? 'not_invited'),
+        }),
+      (err) => setError(errorMessage(err, 'Couldn’t change the group chat status.')),
+    )
   }
 
-  /** True once saved; undoable with Ctrl/Cmd+Z. */
-  async function changeStatus(contact: Contact, status: ContactStatus) {
+  /** Shows the new status at once and writes it in the background; undoable with Ctrl/Cmd+Z once saved.
+   *  False when there was nothing to change. */
+  function changeStatus(contact: Contact, status: ContactStatus) {
     const before = statusOfContact(contact)
     if (before === status) return false
     setError(null)
-    try {
-      await applyStatus(contact.key, status)
-      push({
-        label: `${contact.name}’s status`,
-        // Each only if nobody has changed it since, so undo never overwrites someone else's change.
-        undo: () => applyStatus(contact.key, before, status),
-        redo: () => applyStatus(contact.key, status, before),
-      })
-      return true
-    } catch (err) {
-      setError(errorMessage(err, 'Couldn’t change the status.'))
-      return false
-    }
+    applyStatus(contact.key, status).then(
+      () =>
+        push({
+          label: `${contact.name}’s status`,
+          // Each only if nobody has changed it since, so undo never overwrites someone else's change.
+          undo: () => applyStatus(contact.key, before, status),
+          redo: () => applyStatus(contact.key, status, before),
+        }),
+      (err) => setError(errorMessage(err, 'Couldn’t change the status.')),
+    )
+    return true
   }
 
   /** Texting, calling or emailing someone not reached yet moves them to Awaiting response. */
   function contacted(contact: Contact) {
     if (!read?.columns.status || !BEFORE_CONTACT.includes(statusOfContact(contact))) return
-    changeStatus(contact, 'awaiting_response').then((saved) => {
-      if (saved) notify(`${contact.name} is now Awaiting response`)
-    })
+    if (changeStatus(contact, 'awaiting_response')) notify(`${contact.name} is now Awaiting response`)
   }
 
   const connect = () => readSheet(true)
@@ -467,7 +463,7 @@ export function SignupsPage() {
               return (
                 <li
                   key={c.key}
-                  className={[pending.has(c.key) || pendingChat.has(c.key) ? 'is-saving' : '', isNew ? 'is-new' : ''].filter(Boolean).join(' ')}
+                  className={isNew ? 'is-new' : undefined}
                 >
                   <div className="signup-when" title={c.signedUp || undefined}>
                     {when ?? (c.signedUp || '—')}
@@ -498,7 +494,7 @@ export function SignupsPage() {
                       value={groupChat}
                       options={CHAT_OPTIONS}
                       placeholder="Group chats…"
-                      disabled={!read.columns.groupChat || pendingChat.has(c.key)}
+                      disabled={!read.columns.groupChat}
                       onChange={(value) => changeChat(c, value)}
                       label={`Group chat status for ${c.name}`}
                       title={
