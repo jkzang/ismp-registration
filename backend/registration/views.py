@@ -188,7 +188,7 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
 
     def update(self, request, *args, **kwargs):
         if not kwargs.get('partial'):
-            raise drf_serializers.ValidationError('Use PATCH to change the name, capacity, or start time.')
+            raise drf_serializers.ValidationError('Use PATCH to change the name, event name, capacity, or start time.')
         return super().update(request, *args, **kwargs)
 
     def create(self, request):
@@ -200,7 +200,7 @@ class SheetViewSet(ChapterScoped, mixins.ListModelMixin, mixins.RetrieveModelMix
                 chapter=self.chapter(), imported_by=request.user,
                 **{k: data[k] for k in (
                     'spreadsheet_id', 'spreadsheet_title', 'tab_id', 'tab_title', 'field_map', 'warnings',
-                    'starts_at', 'capacity',
+                    'event_name', 'starts_at', 'capacity',
                 )},
             )
             replace_rows(sheet, data['rows'])

@@ -24,7 +24,7 @@ import {
   telHref,
   type Contact,
 } from '../signupTracker'
-import { CONTACT_STATUSES, sheetName, type ContactStatus, type SeatingPlan } from '../types'
+import { CONTACT_STATUSES, eventName, sheetName, type ContactStatus, type SeatingPlan } from '../types'
 import { useUndo } from '../undo'
 
 type PlanInfo = Omit<OverviewPlan, 'students'>
@@ -80,7 +80,7 @@ function useMessageTemplates(sheetId: number) {
 export function SignupsPage() {
   const { config } = useApp()
   const { push, notify } = useUndo()
-  const { sheet, plan: fullPlan, setPlan: setFullPlan, read, setRead, access, tendError, readSheet, queue, writes, setError } = useSheet()
+  const { sheet, setSheet, plan: fullPlan, setPlan: setFullPlan, read, setRead, access, tendError, readSheet, queue, writes, setError } = useSheet()
   const sheetId = sheet.id
   const students = fullPlan.students
   const plan = planInfo(fullPlan)
@@ -260,7 +260,8 @@ export function SignupsPage() {
   }, [contactKeys, sheetId])
   useEffect(() => () => arrivalTimers.current.forEach((t) => clearTimeout(t)), [])
 
-  const event = sheetName(sheet)
+  // {event} in the messages, and the emails' subject.
+  const event = eventName(sheet)
   const contacts = read?.contacts ?? []
   const q = query.trim().toLowerCase()
   const qDigits = q.replace(/\D/g, '')
@@ -322,7 +323,7 @@ export function SignupsPage() {
           <OverviewDialog
             open={overviewOpen}
             onClose={() => setOverviewOpen(false)}
-            title={event}
+            title={sheetName(sheet)}
             overview={overview}
             capacity={sheet.capacity}
             columns={read.columns}
@@ -348,7 +349,8 @@ export function SignupsPage() {
         })()}
         <MessagesDialog
           open={editingMessages}
-          event={event}
+          sheet={sheet}
+          onSheetSaved={setSheet}
           templates={templates}
           onChange={setTemplate}
           onClose={() => setEditingMessages(false)}

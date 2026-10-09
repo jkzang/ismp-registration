@@ -23,6 +23,8 @@ export type Sheet = {
   id: number
   /** Blank until someone renames it; see sheetName. */
   name: string
+  /** What {event} becomes in the confirmation texts; see eventName. */
+  event_name: string
   spreadsheet_id: string
   spreadsheet_title: string
   tab_id: number
@@ -56,6 +58,7 @@ export type SheetRows = {
 export type NewSheet = SheetRows & {
   spreadsheet_id: string
   tab_id: number
+  event_name: string
   starts_at: string
   capacity: number
   absent_mentor_ids: number[]
@@ -169,3 +172,6 @@ export const signupsKey = (plan: SeatingPlan) => plan.students.map((s) => `${s.i
 
 /** What a sheet is called in the app: its given name, else its tab's title. */
 export const sheetName = (sheet: Sheet) => sheet.name || sheet.tab_title
+
+/** The event as the confirmation texts and emails put it: the name given at import, else the sheet's. */
+export const eventName = (sheet: Sheet) => sheet.event_name || sheetName(sheet)
