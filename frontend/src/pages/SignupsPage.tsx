@@ -383,7 +383,9 @@ export function SignupsPage() {
             <div className="signup-controls">
               {header('groupChat', 'signups-column-chat', true)}
               {header('status', 'signups-column-status', true)}
-              {header('reach', 'signup-actions', true)}
+              <div className="column-header signup-actions">
+                <span className="column-name">Reach out</span>
+              </div>
             </div>
           </div>
           <ul className="signups-list">
