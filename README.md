@@ -30,12 +30,17 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
   device), and move people who hadn't been contacted to *Awaiting response*. Both views list the
   same people from the same tab; Sign-ups is where contact status is tracked, and Check-in picks
   it up by itself.
+  Beside the search, three numbers: signed up, expected, and expected with walk-ins (highlighted
+  when that's over capacity). A red count beside the Group chat column name is everyone not
+  turned down who's still *Not Invited*, and one beside Status is everyone *Not contacted*; they
+  sit over the space beside the names, so nothing moves as they come and go.
 - **Overview** (a button beside the Sign-ups page's search and filters; it opens in a large window
   that closes with its X, Escape or a click outside it) answers:
-  expected turnout (each sign-up times their status's show-up rate, plus walk-ins, the same
-  numbers the tables are planned from), mentors to students per gender at that turnout, who's
-  coming by gender and level, the contact status spread, how people heard about the event, and
-  the group chats.
+  the contact statuses, each with its people, show-up rate and expected count, totalled as the
+  expected turnout and the expected turnout with walk-ins (the same numbers the tables are planned
+  from); mentors to students per gender at that turnout; the students coming by gender and level
+  (Not a student left out); new vs returning as a pie; how people heard about the event, most
+  first (reordering as the numbers change); and the group chats.
 - **The app tends every imported sign-up tab** whenever it reads it (at import, every 30 seconds on
   a sheet's pages, and for every sheet when the app opens with Google already connected). It only
   fills blank cells, so anything typed in the sheet stays:

@@ -48,12 +48,13 @@ describe('overviewOf', () => {
   const { contacts } = readContacts(values, {})
   const o = overviewOf(contacts, plan)
 
-  it('estimates turnout like the planner, leaving out Not a student', () => {
-    // Amy and Bea confirmed (0.85 each), Cal awaiting (0.4): 2.1, so 2, plus 15% walk-ins.
-    expect(o.estimate.terms).toEqual([
-      { label: 'Confirmed', count: 2, rate: 0.85 },
-      { label: 'Awaiting response', count: 1, rate: 0.4 },
-    ])
+  it('estimates turnout like the planner, status by status, leaving out Not a student', () => {
+    // Amy and Bea confirmed (0.85 each; Dee isn't a student), Cal awaiting (0.4): 2.1, so 2, plus 15% walk-ins.
+    const confirmed = o.statuses.find((s) => s.value === 'confirmed')!
+    expect(confirmed).toMatchObject({ count: 3, rate: 0.85 })
+    expect(confirmed.expected).toBeCloseTo(1.7)
+    expect(o.statuses.find((s) => s.value === 'awaiting_response')).toMatchObject({ count: 1, rate: 0.4, expected: 0.4 })
+    expect(o.statuses.find((s) => s.value === 'not_coming')).toMatchObject({ count: 1, rate: 0, expected: 0 })
     expect(o.estimate).toMatchObject({ likely: 2, walkIns: 0, total: 2 })
   })
 
@@ -64,13 +65,25 @@ describe('overviewOf', () => {
     expect(guys).toMatchObject({ gender: 'male', mentors: 1, confirmed: 0 })
   })
 
-  it('breaks down who’s still coming by gender and level', () => {
+  it('breaks down the students still coming by gender and level, without Not a student', () => {
     expect(o.active).toBe(4)
+    expect(o.activeStudents).toBe(3)
+    expect(o.levels).toEqual(['undergrad', 'grad'])
     const girls = o.breakdown.find((r) => r.gender === 'female')!
     expect(girls.cells.map((c) => [c.level, c.count, c.confirmed])).toEqual([
       ['undergrad', 1, 1],
       ['grad', 1, 1],
-      ['other', 1, 1],
+    ])
+  })
+
+  it('lists the sources most first, Other included', () => {
+    const { contacts } = readContacts(
+      [values[0], ...['a newspaper', 'a podcast', 'Instagram'].map((heard, i) => ['9' + i, 'P' + i, '', '', '', heard])],
+      {},
+    )
+    expect(overviewOf(contacts, plan).referrals).toEqual([
+      { label: 'Other', count: 2 },
+      { label: 'Instagram', count: 1 },
     ])
   })
 
@@ -85,7 +98,7 @@ describe('overviewOf', () => {
   })
 
   it('counts the group chats among people still coming', () => {
-    expect(o.chats).toMatchObject({ wanting: 2, confirmed: 2, added: 1, toAdd: 2 })
+    expect(o.chats).toMatchObject({ wanting: 2, confirmed: 2, added: 1, toAdd: 2, toInvite: 1 })
     expect(o.chats.stages.map((s) => [s.value, s.count])).toEqual([['todo', 1], ['pending', 1], ['complete', 1], ['na', 1]])
   })
 
