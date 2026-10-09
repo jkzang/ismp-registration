@@ -3527,13 +3527,55 @@ button.overview-action:hover {
   font-size: 14px;
 }
 
-/* Too narrow for every column: each row wraps, the details sit together, and the column names
-   wrap into a row of buttons. */
+/* The column widths depend on the room the list has, not the window's, so they hold whether the
+   sidebar is expanded or collapsed. */
 .signups {
   container: signups / inline-size;
 }
 
+/* A little short of room: the same columns, closer together and a little narrower, so the names
+   still line up with their data. */
 @container signups (max-width: 1300px) {
+  .signups-columns,
+  .signups-list li {
+    column-gap: 10px;
+  }
+
+  .signup-details,
+  .signup-controls {
+    gap: 10px;
+  }
+
+  .signup-when {
+    width: 144px;
+  }
+
+  .signup-gender {
+    width: 100px;
+  }
+
+  .signup-level {
+    width: 132px;
+  }
+
+  .signup-returning {
+    width: 120px;
+  }
+
+  .signups-column-chat,
+  .signups .signups-list .status-select.chat-select {
+    width: 176px;
+  }
+
+  .signups-column-status,
+  .signups-list .status-select {
+    width: 160px;
+  }
+}
+
+/* Too narrow for every column: each row wraps, the details sit together, and the column names
+   wrap into a row of buttons. */
+@container signups (max-width: 1160px) {
   .signups-list li {
     flex-wrap: wrap;
   }
