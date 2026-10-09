@@ -3533,44 +3533,48 @@ button.overview-action:hover {
   container: signups / inline-size;
 }
 
-/* A little short of room: the same columns, closer together and a little narrower, so the names
-   still line up with their data. */
-@container signups (max-width: 1300px) {
-  .signups-columns,
-  .signups-list li {
-    column-gap: 10px;
-  }
+/* Short of room, the columns close up and narrow a little, in step with the list's width rather
+   than all at once, so they glide as the sidebar opens and closes. --room runs from 0 at 1160px of
+   list (the narrowest they go) to 140px at 1300px (full size). */
+.signups-columns,
+.signups-list {
+  --room: clamp(0px, 100cqi - 1160px, 140px);
+}
 
-  .signup-details,
-  .signup-controls {
-    gap: 10px;
-  }
+.signups-columns,
+.signups-list li {
+  column-gap: calc(10px + var(--room) * 8 / 140);
+}
 
-  .signup-when {
-    width: 144px;
-  }
+.signup-details,
+.signup-controls {
+  gap: calc(10px + var(--room) * 8 / 140);
+}
 
-  .signup-gender {
-    width: 100px;
-  }
+.signup-when {
+  width: calc(144px + var(--room) * 12 / 140);
+}
 
-  .signup-level {
-    width: 132px;
-  }
+.signup-gender {
+  width: calc(100px + var(--room) * 8 / 140);
+}
 
-  .signup-returning {
-    width: 120px;
-  }
+.signup-level {
+  width: calc(132px + var(--room) * 18 / 140);
+}
 
-  .signups-column-chat,
-  .signups .signups-list .status-select.chat-select {
-    width: 176px;
-  }
+.signup-returning {
+  width: calc(120px + var(--room) * 10 / 140);
+}
 
-  .signups-column-status,
-  .signups-list .status-select {
-    width: 160px;
-  }
+.signups-column-chat,
+.signups .signups-list .status-select.chat-select {
+  width: calc(176px + var(--room) * 24 / 140);
+}
+
+.signups-column-status,
+.signups-list .status-select {
+  width: calc(160px + var(--room) * 12 / 140);
 }
 
 /* Too narrow for every column: each row wraps, the details sit together, and the column names
