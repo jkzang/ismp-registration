@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, errorMessage } from '../api'
 import { useApp } from '../appContext'
 import { ChartIcon, MailIcon, MessageIcon, PhoneIcon, SearchIcon } from '../components/icons'
-import { Segmented } from '../components/Segmented'
-import { DetailChips, SignupPersonDialog } from '../components/SignupPersonDialog'
+import { ColumnHeader } from '../components/ColumnHeader'
+import { GENDER_LABELS, LEVEL_LABELS, SignupPersonDialog } from '../components/SignupPersonDialog'
 import { OverviewDialog } from '../components/SignupsOverview'
 import { StatusChangedError, writeGroupChat, writeStatus } from '../google'
 import { useSheet } from '../sheetContext'
-import { CHAT_STAGES, chatStageOf, GROUP_CHAT_STATUSES, groupChatLabel, needsChat, type GroupChatStatus } from '../signupColumns'
+import { CHAT_STAGES, chatStageOf, GROUP_CHAT_STATUSES, groupChatLabel, RETURNING_LABELS, type GroupChatStatus } from '../signupColumns'
+import { DEFAULT_SORT, isFiltered, optionCounts, passes, sortRows, TO_ADD, type ColumnId, type Filters, type Sort } from '../signupFilters'
 import { overviewOf, type OverviewPlan } from '../signupOverview'
 import {
   BEFORE_CONTACT,
@@ -15,33 +16,13 @@ import {
   dialable,
   fillMessage,
   mailtoHref,
-  SIGNED_UP_RANGES,
   signedUpText,
-  signedUpWithin,
   smsHref,
-  STATUS_GROUPS,
   telHref,
   type Contact,
 } from '../signupTracker'
 import { CONTACT_STATUSES, sheetName, type ContactStatus, type SeatingPlan } from '../types'
 import { useUndo } from '../undo'
-
-const GENDER_FILTERS = [
-  { value: 'all', label: 'All' },
-  { value: 'female', label: 'Girls' },
-  { value: 'male', label: 'Guys' },
-] as const
-const LEVEL_FILTERS = [
-  { value: 'all', label: 'All' },
-  { value: 'undergrad', label: 'Undergrad' },
-  { value: 'grad', label: 'Grad' },
-  { value: 'other', label: 'Not a student' },
-] as const
-type GenderFilter = (typeof GENDER_FILTERS)[number]['value']
-type LevelFilter = (typeof LEVEL_FILTERS)[number]['value']
-
-// The filter for confirmed people who asked to join the group chats and aren't in them yet (To Do or Pending).
-const CHAT_GROUP = 'chat'
 
 type PlanInfo = Omit<OverviewPlan, 'students'>
 const planInfo = ({ mentors, excluded_mentor_ids, show_up_rates, walk_in_rate, ideal_per_mentor }: SeatingPlan): PlanInfo => ({
@@ -98,11 +79,10 @@ export function SignupsPage() {
   const [overviewOpen, setOverviewOpen] = useState(false)
   // The person view; by key, so it shows their latest row.
   const [openKey, setOpenKey] = useState<string | null>(null)
-  const [group, setGroup] = useState('all')
   const [query, setQuery] = useState('')
-  const [signedUpRange, setSignedUpRange] = useState('any')
-  const [genderFilter, setGenderFilter] = useState<GenderFilter>('all')
-  const [levelFilter, setLevelFilter] = useState<LevelFilter>('all')
+  // Each column header's ticked values, and the column the list is sorted by.
+  const [filters, setFilters] = useState<Filters>({})
+  const [sort, setSort] = useState<Sort>(DEFAULT_SORT)
   const [editingMessage, setEditingMessage] = useState(false)
   const [template, setTemplate] = useMessageTemplate(sheetId)
 
@@ -241,11 +221,6 @@ export function SignupsPage() {
 
   const event = sheetName(sheet)
   const contacts = read?.contacts ?? []
-  const inGroup = (contact: Contact, value: string) => {
-    if (value === CHAT_GROUP) return statusOfContact(contact) === 'confirmed' && contact.wantsChat && needsChat(groupChatOf(contact))
-    const statuses = STATUS_GROUPS.find((g) => g.value === value)?.statuses
-    return !statuses || statuses.includes(statusOfContact(contact))
-  }
   const q = query.trim().toLowerCase()
   const qDigits = q.replace(/\D/g, '')
   const matches = (c: Contact) =>
@@ -255,28 +230,32 @@ export function SignupsPage() {
     c.email.toLowerCase().includes(q) ||
     c.socials.some((s) => s.id.toLowerCase().includes(q)) ||
     (qDigits.length >= 3 && c.phone.replace(/\D/g, '').includes(qDigits))
-  const filtered = signedUpRange !== 'any' || genderFilter !== 'all' || levelFilter !== 'all'
-  const passesFilters = (c: Contact) =>
-    signedUpWithin(c.signedUp, signedUpRange) &&
-    (genderFilter === 'all' || c.gender === genderFilter) &&
-    (levelFilter === 'all' || c.level === levelFilter)
-  const clearFilters = () => {
-    setSignedUpRange('any')
-    setGenderFilter('all')
-    setLevelFilter('all')
-  }
-  // The status tabs count who's left after the time, gender and enrollment filters.
-  const filteredContacts = contacts.filter(passesFilters)
-  // The form adds rows at the bottom, so the newest sign-ups come first.
-  const shown = filteredContacts.filter((c) => inGroup(c, group) && matches(c)).reverse()
-  const groups = [
-    ...STATUS_GROUPS,
-    ...(read?.columns.chat ? [{ value: CHAT_GROUP, label: 'Add to chats' }] : []),
-  ]
+  const clearFilters = () => setFilters({})
+  // With what's still being saved, so a row moves as soon as its status changes.
+  const current = contacts.map((c) => ({ ...c, status: statusOfContact(c), groupChat: groupChatOf(c) }))
+  const now = Date.now()
+  const searched = current.filter(matches)
+  const shown = sortRows(
+    searched.map((contact, index) => ({ contact, index })).filter((r) => passes(r.contact, filters, now)),
+    sort,
+  ).map((r) => r.contact)
+  /** A column's header, with counts among who the search and the other columns let through. */
+  const header = (id: ColumnId, className: string, end?: boolean) => (
+    <ColumnHeader
+      id={id}
+      className={className}
+      sort={sort}
+      picked={filters[id] ?? []}
+      counts={optionCounts(searched, filters, id, now)}
+      end={end}
+      onSort={(dir) => setSort({ column: id, dir })}
+      onPick={(values) => setFilters((f) => ({ ...f, [id]: values }))}
+    />
+  )
   // With what's still being saved, so the numbers move as soon as something changes.
   const overview =
     read
-      ? overviewOf(contacts.map((c) => ({ ...c, status: statusOfContact(c), groupChat: groupChatOf(c) })), { ...plan, students })
+      ? overviewOf(current, { ...plan, students })
       : null
 
   return (
@@ -306,8 +285,7 @@ export function SignupsPage() {
             columns={read.columns}
             onShowChatList={() => {
               setQuery('')
-              clearFilters()
-              setGroup(CHAT_GROUP)
+              setFilters({ groupChat: [TO_ADD] })
             }}
           />
         )}
@@ -359,45 +337,11 @@ export function SignupsPage() {
                 <MessageIcon />
               </button>
             </div>
-            <div className="signups-groups" role="tablist" aria-label="Contact status">
-              {groups.map((g) => (
-                <button
-                  key={g.value}
-                  type="button"
-                  role="tab"
-                  aria-selected={group === g.value}
-                  className={group === g.value ? 'is-on' : ''}
-                  onClick={() => setGroup(g.value)}
-                >
-                  {g.label} <span className="tab-count">{filteredContacts.filter((c) => inGroup(c, g.value)).length}</span>
-                </button>
-              ))}
-            </div>
-            <div className="signups-filters">
-              <label className="signups-filter">
-                <span>Signed up</span>
-                <select value={signedUpRange} onChange={(e) => setSignedUpRange(e.target.value)}>
-                  {SIGNED_UP_RANGES.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="signups-filter">
-                <span>Gender</span>
-                <Segmented label="Gender" value={genderFilter} options={[...GENDER_FILTERS]} onChange={setGenderFilter} />
-              </div>
-              <div className="signups-filter">
-                <span>Enrollment</span>
-                <Segmented label="Enrollment" value={levelFilter} options={[...LEVEL_FILTERS]} onChange={setLevelFilter} />
-              </div>
-              {filtered && (
-                <button type="button" className="link-button" onClick={clearFilters}>
-                  Clear filters
-                </button>
-              )}
-            </div>
+            {isFiltered(filters) && (
+              <button type="button" className="link-button signups-clear" onClick={clearFilters}>
+                Clear filters
+              </button>
+            )}
             {editingMessage && (
               <div className="message-editor">
                 <label>
@@ -427,15 +371,20 @@ export function SignupsPage() {
           {!read.columns.phone && !read.columns.email && (
             <p className="signups-note">No phone or email column found, so there’s no one to text or email.</p>
           )}
-          {/* Lined up with the list's columns; on a phone, where each row wraps, they're hidden. */}
-          <div className="signups-columns" aria-hidden="true">
-            <span className="signup-when">Signed up</span>
-            <span className="signup-person">Name</span>
-            <span className="signup-controls">
-              <span className="signups-column-chat">Group chat</span>
-              <span className="signups-column-status">Contact status</span>
-              <span className="signup-actions">Reach out</span>
-            </span>
+          {/* Lined up with the list's columns; on a phone, where each row wraps, they wrap too. */}
+          <div className="signups-columns">
+            {header('signedUp', 'signup-when')}
+            {header('name', 'signup-person')}
+            <div className="signup-details">
+              {header('gender', 'signup-gender')}
+              {header('level', 'signup-level')}
+              {header('returning', 'signup-returning')}
+            </div>
+            <div className="signup-controls">
+              {header('groupChat', 'signups-column-chat', true)}
+              {header('status', 'signups-column-status', true)}
+              {header('reach', 'signup-actions', true)}
+            </div>
           </div>
           <ul className="signups-list">
             {shown.map((c) => {
@@ -454,11 +403,17 @@ export function SignupsPage() {
                       {c.name}
                       {c.nickname && <span className="checkin-nickname">“{c.nickname}”</span>}
                     </button>
-                    {(c.gender || c.level || c.returning) && (
-                      <span className="signup-meta">
-                        <DetailChips contact={c} />
-                      </span>
-                    )}
+                  </div>
+                  <div className="signup-details">
+                    <span className="signup-gender">
+                      {c.gender && <span className={`detail-chip gender-${c.gender}`}>{GENDER_LABELS[c.gender]}</span>}
+                    </span>
+                    <span className="signup-level">
+                      {c.level && <span className={`detail-chip level-${c.level}`}>{LEVEL_LABELS[c.level]}</span>}
+                    </span>
+                    <span className="signup-returning">
+                      {c.returning && <span className={`detail-chip returning-${c.returning}`}>{RETURNING_LABELS[c.returning]}</span>}
+                    </span>
                   </div>
                   <div className="signup-controls">
                     <select

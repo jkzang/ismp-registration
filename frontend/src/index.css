@@ -2646,9 +2646,6 @@ button .spinner {
   flex: none;
 }
 
-
-
-
 /* Sign-ups and Check-in, under a sheet's title. */
 .sheet-views {
   margin-top: 6px;
@@ -2730,17 +2727,6 @@ button .spinner {
   max-width: 360px;
 }
 
-.signups-groups {
-  flex-wrap: wrap;
-}
-
-.signups-groups button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-}
-
 .signups-note {
   display: flex;
   flex-wrap: wrap;
@@ -2799,24 +2785,6 @@ button .spinner {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-}
-
-.signup-meta,
-.signup-reach {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 10px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.signup-reach {
-  user-select: text;
-}
-
-.signup-meta .checkin-flag {
-  align-self: center;
 }
 
 .signup-controls {
@@ -3184,36 +3152,6 @@ button.overview-action:hover {
   flex: 1 1 100%;
 }
 
-/* Time, gender and enrollment filters, on their own line under the search. */
-.signups-filters {
-  flex: 1 1 100%;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 18px;
-}
-
-.signups-filter {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.signups-filter select {
-  width: auto;
-  padding: 5px 10px;
-  font-size: 13px;
-  color: var(--text);
-}
-
-.signups-filter .segmented button {
-  padding: 4px 10px;
-  font-size: 13px;
-}
-
 /* Gender and enrollment beside each sign-up's name. */
 .detail-chip {
   display: inline-flex;
@@ -3246,47 +3184,257 @@ button.overview-action:hover {
   font-variant-numeric: tabular-nums;
 }
 
-/* The list's column names, spaced like its rows. */
+/* The list's column names, spaced like its rows. Each one opens its sort and filter menu. */
 .signups-columns {
   display: flex;
   align-items: center;
   gap: 8px 16px;
   padding: 0 10px 4px;
   border-bottom: 1px solid var(--border);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--text-muted);
 }
 
-.signups-columns .signup-when {
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.signups-columns .signup-person {
+.signups-columns .signup-person,
+.signups-list .signup-person {
   flex: 1;
+  min-width: 0;
+}
+
+/* Gender, enrollment and new or returning, each in its own column. */
+.signup-details {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.signup-gender {
+  width: 64px;
+}
+
+.signup-level {
+  width: 112px;
+}
+
+.signup-returning {
+  width: 92px;
 }
 
 .signups-column-chat {
   width: 200px;
-  padding-left: 8px;
 }
 
 .signups-column-status {
   width: 172px;
-  padding-left: 8px;
 }
 
-@media (max-width: 900px) {
-  .signups-columns {
+.column-header {
+  position: relative;
+  flex: none;
+}
+
+.column-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  /* Out into the gutter, so the name lines up with the cells under it. */
+  margin-left: -8px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-muted);
+  background: none;
+}
+
+/* The dropdowns' text starts inside them, and so does their column's name. */
+.signups-column-chat .column-button,
+.signups-column-status .column-button {
+  margin-left: 0;
+}
+
+.column-button:hover,
+.column-button[aria-expanded='true'] {
+  color: var(--text);
+  background: var(--hover-wash);
+}
+
+.column-button.is-filtered {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.column-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0;
+  color: #fff;
+  background: var(--accent-fill);
+}
+
+.column-caret {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.column-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: -8px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 220px;
+  max-width: calc(100vw / var(--ui-scale) - 32px);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.column-menu.is-end {
+  left: auto;
+  right: 0;
+}
+
+.column-sorts {
+  display: flex;
+  flex-direction: column;
+}
+
+.column-sorts button,
+.column-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  cursor: pointer;
+}
+
+.column-sorts button:hover,
+.column-option:hover {
+  background: var(--hover-wash);
+}
+
+.column-sorts button.is-on {
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.column-options {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.column-option input {
+  margin: 0;
+}
+
+.column-option.is-group {
+  font-weight: 700;
+}
+
+.column-option.is-nested {
+  padding-left: 30px;
+}
+
+.column-option-count {
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.column-clear {
+  align-self: flex-start;
+  margin: 6px 8px 2px;
+  font-size: 13px;
+}
+
+.signups-clear {
+  font-size: 14px;
+}
+
+/* Too narrow for every column: each row wraps, the details sit together, and the column names
+   wrap into a row of buttons. */
+.signups {
+  container: signups / inline-size;
+}
+
+@container signups (max-width: 1080px) {
+  .signups-list li {
+    flex-wrap: wrap;
+  }
+
+  .signups-list .signup-person {
+    flex: 1 1 160px;
+  }
+
+  .signups-list .signup-details {
+    gap: 6px;
+  }
+
+  .signups-list .signup-details > span {
+    width: auto;
+  }
+
+  .signups-list .signup-details > span:empty {
     display: none;
   }
-}
 
-.signups-list .signup-person {
-  flex: 1;
+  .signups-columns {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-bottom: 8px;
+  }
+
+  .signups-columns .signup-details,
+  .signups-columns .signup-controls {
+    display: contents;
+  }
+
+  .signups-columns .column-header {
+    flex: none;
+    width: auto;
+    min-width: 0;
+  }
+
+  .signups-columns .column-button {
+    margin-left: 0;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: var(--btn);
+  }
+
+  .signups-columns .column-button.is-filtered {
+    background: var(--accent-soft);
+  }
 }
 
 /* The name opens the person view. */
@@ -3691,7 +3839,7 @@ button.overview-action:hover {
 }
 
 /* ---- The Sign-ups toolbar ----
-   Search with Overview and Message, then the status tabs as an underlined row, then the filters. */
+   Search with Overview and Message; the column headers below sort and filter. */
 .signups-page .signups-top {
   gap: 12px;
   padding: 2px 0 0;
@@ -3721,82 +3869,6 @@ button.overview-action:hover {
   width: 38px;
   border: 1px solid var(--input-border);
   background: var(--bg);
-}
-
-.signups-groups {
-  flex: 1 1 100%;
-  display: flex;
-  gap: 4px;
-  padding: 0;
-  /* The rule under the tabs, drawn inside so scrolling doesn't clip the active tab's line. */
-  box-shadow: inset 0 -1px 0 var(--border);
-  flex-wrap: nowrap;
-  border-radius: 0;
-  background: none;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.signups-groups button {
-  flex: none;
-  gap: 7px;
-  padding: 8px 12px 10px;
-  border: none;
-  border-radius: 0;
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-  color: var(--text-muted);
-  background: none;
-  box-shadow: none;
-}
-
-.signups-groups button:hover {
-  color: var(--text);
-  background: none;
-}
-
-.signups-groups button.is-on {
-  color: var(--accent);
-  background: none;
-  box-shadow: inset 0 -2px 0 var(--accent-fill);
-}
-
-.signups-groups button.is-on .tab-count {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.signups-filters {
-  gap: 8px 20px;
-}
-
-.signups-filter {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.signups-filter select {
-  height: 32px;
-  padding: 0 28px 0 10px;
-  border-color: transparent;
-  border-radius: 8px;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-  background-color: var(--btn);
-}
-
-.signups-filter .segmented {
-  padding: 2px;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.signups-filter .segmented button {
-  padding: 4px 10px;
 }
 
 .signups-columns {
