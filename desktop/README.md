@@ -13,6 +13,8 @@ deploy by itself. What the app adds:
   gets on the web.
 - **Links open on the Mac.** Text, Call and Email open Messages, FaceTime and Mail. Links to Google
   Sheets and anything else outside the app open in your browser.
+- **No title bar.** The close, minimize and zoom buttons sit in the sidebar's top row, which drags
+  the window like a title bar (`.has-window-controls` in `frontend/src/index.css`).
 - A loading page while the server wakes up (Render's free plan can take a minute), and a
   **Try again** page when it can't be reached.
 

@@ -22,6 +22,8 @@ const CSS = `
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
+/* In the app window, the strip above the card drags the window, as the title bar would. */
+.has-window-controls body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 44px; -webkit-app-region: drag; }
 .auth-page {
   zoom: var(--ui-scale); min-height: calc(100vh / var(--ui-scale)); display: flex; align-items: flex-start; justify-content: center; padding: 56px 16px;
   background:
