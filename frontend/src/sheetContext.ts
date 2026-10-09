@@ -1,5 +1,4 @@
 import { createContext, useContext, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
-import type { useAttendanceSync } from './attendanceSync'
 import type { readContacts } from './signupTracker'
 import type { SeatingPlan, Sheet } from './types'
 
@@ -30,7 +29,6 @@ export type SheetContextValue = {
   setError: (message: string | null) => void
   signupsChanged: boolean
   onReplanAnswered: () => void
-  attendance: ReturnType<typeof useAttendanceSync>
 }
 
 export const SheetContext = createContext<SheetContextValue | null>(null)

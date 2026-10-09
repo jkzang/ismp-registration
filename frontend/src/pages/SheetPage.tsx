@@ -6,7 +6,7 @@ import { useSheet } from '../sheetContext'
 
 /** The check-in list and the tables board side by side (one at a time on a phone), under SheetLayout's header. */
 export function SheetPage() {
-  const { sheet, setSheet, plan, setPlan, attendance, signupsChanged, onReplanAnswered } = useSheet()
+  const { sheet, setSheet, plan, setPlan, signupsChanged, onReplanAnswered } = useSheet()
   // Narrow screens show one panel at a time.
   const [panel, setPanel] = useState<'checkin' | 'tables'>('checkin')
 
@@ -27,7 +27,6 @@ export function SheetPage() {
           plan={plan}
           onChange={(update) => setPlan((p) => (p ? update(p) : p))}
           onReload={() => api.getPlan(sheet.id).then(setPlan).catch(() => {})}
-          onAttendance={attendance.record}
           onSheetChange={setSheet}
         />
         <TablesBoard

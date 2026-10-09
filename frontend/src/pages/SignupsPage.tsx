@@ -337,20 +337,6 @@ export function SignupsPage() {
                 aria-label="Search by name, nickname, phone, email or social media ID"
               />
             </label>
-            <div className="segmented signups-groups" role="tablist" aria-label="Contact status">
-              {groups.map((g) => (
-                <button
-                  key={g.value}
-                  type="button"
-                  role="tab"
-                  aria-selected={group === g.value}
-                  className={group === g.value ? 'is-on' : ''}
-                  onClick={() => setGroup(g.value)}
-                >
-                  {g.label} <span className="tab-count">{filteredContacts.filter((c) => inGroup(c, g.value)).length}</span>
-                </button>
-              ))}
-            </div>
             <div className="signups-tools">
               <button
                 type="button"
@@ -372,6 +358,20 @@ export function SignupsPage() {
               >
                 <MessageIcon />
               </button>
+            </div>
+            <div className="signups-groups" role="tablist" aria-label="Contact status">
+              {groups.map((g) => (
+                <button
+                  key={g.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={group === g.value}
+                  className={group === g.value ? 'is-on' : ''}
+                  onClick={() => setGroup(g.value)}
+                >
+                  {g.label} <span className="tab-count">{filteredContacts.filter((c) => inGroup(c, g.value)).length}</span>
+                </button>
+              ))}
             </div>
             <div className="signups-filters">
               <label className="signups-filter">

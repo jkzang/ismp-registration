@@ -9,8 +9,9 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
 - **Add sign up sheet** opens Google's file picker. Pick the spreadsheet, then the tab, check the
   column mapping, and import. The same tab can be imported more than once.
 - Each sheet page has the check-in list and the table board side by side, and a manual capacity.
-  The sheet is the source of truth: its name, **Start**, **Capacity** and **Re-sync** sit in a
-  header shared by its Check-in and Sign-ups pages, which stays put (with everything loaded) when
+  Check-ins live in the app and the sheet's "- Check In" tab; the sign-up tab's own attendance
+  column isn't touched. The sheet is the source of truth: its name, **Start**, **Capacity** and
+  **Re-sync** sit in a header shared by its Check-in and Sign-ups pages, which stays put (with everything loaded) when
   switching between them. The sign-up tab is read every 30 seconds while either page is open (and
   when you come back to the browser tab), and any change goes to both pages and to check-in, never
   on its own dropping more than half the sign-ups (a half-edited sheet, more likely). Switching
@@ -48,6 +49,7 @@ Extracted from ISMP Operations (the check-in and discussion-group logic is a por
     *Chip* switches them by hand. Either way the app only sets them again for a new layout or
     version.
   - Removes the empty rows under the last sign-up.
+  - Left-aligns everything from the header down, new rows included.
   - Fills blank Contact Status with *Not Contacted*.
   - Fills New or Returning by looking each person up in the spreadsheet's **Student Database** tab
     (by phone, then email, then name): found is *Returning*, otherwise *New*. Without that tab it's

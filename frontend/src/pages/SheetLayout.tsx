@@ -2,10 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router'
 import { api, ApiError, errorMessage } from '../api'
 import { useApp } from '../appContext'
-import { useAttendanceSync, type AttendanceStatus } from '../attendanceSync'
 import { RESERVE_MINUTES } from '../capacity'
 import { useCheckInTabSync, type CheckInTabStatus } from '../checkInTabSync'
-import { CheckIcon, CloseIcon, PencilIcon, RefreshIcon, WarningIcon } from '../components/icons'
+import { CloseIcon, PencilIcon, RefreshIcon, WarningIcon } from '../components/icons'
 import { SheetViews } from '../components/SheetViews'
 import { getAccessToken, NeedsSignInError, NoAccessError, readTab, withSheetAccess } from '../google'
 import { toLocalInput } from '../localTime'
@@ -179,58 +178,14 @@ function SheetTitle({ sheet, url, onSaved }: { sheet: Sheet; url: string; onSave
   )
 }
 
-/** Whether check-ins are reaching the Google Sheet's attendance checkboxes. Quiet when all is well. */
-function AttendanceChip({ status, onConnect, onRetry }: { status: AttendanceStatus; onConnect: () => void; onRetry: () => void }) {
-  switch (status.kind) {
-    case 'idle':
-      return null
-    case 'saving':
-      return <span className="attendance-chip is-quiet">Saving attendance…</span>
-    case 'saved':
-      return (
-        <span className="attendance-chip is-quiet" title="Check-ins are ticked in the sheet’s attendance column">
-          <CheckIcon /> Attendance saved
-        </span>
-      )
-    case 'no-column':
-      return <span className="attendance-chip is-quiet" title={status.message}>No attendance column</span>
-    case 'needs-access':
-      return (
-        <button type="button" className="attendance-chip is-alert" onClick={onConnect} title="Attendance isn’t reaching the sheet from this device">
-          Connect Google Sheets
-        </button>
-      )
-    case 'error':
-      return (
-        <button type="button" className="attendance-chip is-alert" onClick={onRetry} title={status.message}>
-          Attendance not saved · Retry
-        </button>
-      )
-  }
-}
-
-/** Only when the "- Check In" tab isn't keeping up. Needing sign-in is left to the attendance chip when it asks too. */
-function CheckInTabChip({ status, attendance, onConnect, onRetry }: {
-  status: CheckInTabStatus
-  attendance: AttendanceStatus
-  onConnect: () => void
-  onRetry: () => void
-}) {
-  if (status.kind === 'needs-access' && attendance.kind !== 'needs-access') {
-    return (
-      <button type="button" className="attendance-chip is-alert" onClick={onConnect} title="The check-in tab isn’t being updated from this device">
-        Connect Google Sheets
-      </button>
-    )
-  }
-  if (status.kind === 'error') {
-    return (
-      <button type="button" className="attendance-chip is-alert" onClick={onRetry} title={status.message}>
-        Check-in tab not updated · Retry
-      </button>
-    )
-  }
-  return null
+/** Only when the "- Check In" tab isn't keeping up for some other reason than needing Google. */
+function CheckInTabChip({ status, onRetry }: { status: CheckInTabStatus; onRetry: () => void }) {
+  if (status.kind !== 'error') return null
+  return (
+    <button type="button" className="attendance-chip is-alert" onClick={onRetry} title={status.message}>
+      Check-in tab not updated · Retry
+    </button>
+  )
 }
 
 /** A quiet count of formatting warnings that opens to the list; nothing when the tab looked fine. */
@@ -297,7 +252,6 @@ export function SheetLayout() {
   const [syncing, setSyncing] = useState(false)
   // A re-sync changed the sign-ups the tables were planned for, and nobody has answered whether to re-plan.
   const [signupsChanged, setSignupsChanged] = useState(false)
-  const attendance = useAttendanceSync(config, sheet, plan)
   const checkInTab = useCheckInTabSync(config, sheet, plan)
 
   const sheetRef = useRef(sheet)
@@ -445,7 +399,9 @@ export function SheetLayout() {
   }
 
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheet.spreadsheet_id)}/edit#gid=${sheet.tab_id}`
-  const connect = () => attendance.connect().then(() => Promise.all([checkInTab.retry(), readSheet(true)]))
+  // From a click: Google's sign-in, and the Picker if this device hasn't opened the file yet.
+  const connect = () => readSheet(true).then(() => checkInTab.retry())
+  const needsGoogle = access === 'needs-access' || checkInTab.status.kind === 'needs-access'
 
   return (
     <SheetContext.Provider
@@ -464,7 +420,6 @@ export function SheetLayout() {
         setError,
         signupsChanged,
         onReplanAnswered: () => setSignupsChanged(false),
-        attendance,
       }}
     >
       <div className="sheet-page">
@@ -475,15 +430,17 @@ export function SheetLayout() {
           </div>
           <div className="sheet-head-actions">
             <WarningsChip warnings={sheet.warnings} />
-            <AttendanceChip status={attendance.status} onConnect={attendance.connect} onRetry={attendance.retry} />
-            <CheckInTabChip status={checkInTab.status} attendance={attendance.status} onConnect={connect} onRetry={checkInTab.retry} />
-            {access === 'needs-access' && attendance.status.kind !== 'needs-access' && checkInTab.status.kind !== 'needs-access' && (
-              <button type="button" className="attendance-chip is-alert" onClick={() => readSheet(true)} title="This device can’t reach the sheet right now">
+            <CheckInTabChip status={checkInTab.status} onRetry={checkInTab.retry} />
+            {needsGoogle && (
+              <button type="button" className="attendance-chip is-alert" onClick={connect} title="This device can’t reach the sheet right now">
                 Connect Google Sheets
               </button>
             )}
-            <StartField sheet={sheet} onSaved={setSheet} />
-            <CapacityField sheet={sheet} onSaved={setSheet} />
+            {/* The event's details, as one box. */}
+            <div className="event-fields">
+              <StartField sheet={sheet} onSaved={setSheet} />
+              <CapacityField sheet={sheet} onSaved={setSheet} />
+            </div>
             <button
               type="button"
               className={`with-icon resync-button${syncing ? ' is-syncing' : ''}`}

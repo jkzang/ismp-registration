@@ -3,8 +3,9 @@
  *
  * Only name, nickname, gender, enrollment level and contact status leave this module; phone,
  * email, chat IDs and every other column are dropped here and never sent to the server. The
- * attendance, phone and email columns are only located: attendance so check-ins can be ticked off
- * in the sheet, phone and email so studentDatabase.ts can match people in the browser.
+ * attendance, phone and email columns are only located: attendance so it isn't taken for a form
+ * answer (check-ins are kept in the "- Check In" tab instead), phone and email so
+ * studentDatabase.ts can match people in the browser.
  */
 
 export type Gender = 'female' | 'male'

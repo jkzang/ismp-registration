@@ -3,7 +3,7 @@
  *
  * Access tokens stay in this tab (memory and sessionStorage, so a reload doesn't need Google's popup
  * again) and are never sent to our server. The app asks only for the drive.file scope, so it can
- * read (and tick attendance in) just the spreadsheets someone picks in the Google Picker.
+ * read (and write to) just the spreadsheets someone picks in the Google Picker.
  */
 import { checkInTabTitle, type CheckInLayout } from './checkInTab'
 import { parseSheet, type ContactStatus, type FieldMap } from './sheetParser'
@@ -93,7 +93,7 @@ export class NeedsSignInError extends Error {}
  */
 export async function getAccessToken(config: AppConfig, { interactive = true } = {}): Promise<string> {
   if (token && token.expiresAt > Date.now() + 60_000) return token.value
-  if (!interactive) throw new NeedsSignInError('Sign in to Google to write attendance to the sheet.')
+  if (!interactive) throw new NeedsSignInError('Sign in to Google to reach the sheet.')
   await loadIdentity()
   return new Promise((resolve, reject) => {
     const client = google.accounts.oauth2.initTokenClient({
@@ -278,47 +278,6 @@ function columnLetter(index: number) {
   let letters = ''
   for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) letters = String.fromCharCode(65 + ((n - 1) % 26)) + letters
   return letters
-}
-
-export class NoAttendanceColumnError extends Error {}
-
-/**
- * Ticks the attendance checkbox of everyone in `tick` and clears it for everyone in `untick`
- * (keys of sign-up rows), skipping boxes already right. Returns how many boxes it changed.
- */
-export async function writeAttendance(
-  config: AppConfig,
-  sheet: { spreadsheet_id: string; tab_id: number; field_map: FieldMap },
-  tick: Set<string>,
-  untick: Set<string>,
-) {
-  const { tabTitle, values } = await readTab(config, sheet.spreadsheet_id, sheet.tab_id)
-  // An import from before the column existed saved it as "none"; look for it again.
-  const parsed = parseSheet(values, { fieldMap: locateFieldMap(sheet.field_map) })
-  const column = parsed.columns.attendance
-  if (column === undefined) {
-    throw new NoAttendanceColumnError('No attendance column found. Name a column “Attendance” in the sheet.')
-  }
-  const tab = `'${tabTitle.replace(/'/g, "''")}'`
-  const data = parsed.rows.flatMap((row, i) => {
-    const index = parsed.rowIndexes[i]
-    const ticked = (values[index]?.[column] ?? '').trim().toUpperCase() === 'TRUE'
-    const want = tick.has(row.key) ? true : untick.has(row.key) ? false : ticked
-    return want !== ticked ? [{ range: `${tab}!${columnLetter(column)}${index + 1}`, values: [[want]] }] : []
-  })
-  if (data.length > 0) {
-    try {
-      await sheetsFetch(config, `${encodeURIComponent(sheet.spreadsheet_id)}/values:batchUpdate`, {
-        method: 'POST',
-        body: JSON.stringify({ valueInputOption: 'RAW', data }),
-      })
-    } catch (err) {
-      // It could be read, so this is Google's own sharing: view-only.
-      if (err instanceof NoAccessError) throw new Error('You can view this spreadsheet but not edit it. Ask its owner for edit access.')
-      throw err
-    }
-  }
-  return data.length
 }
 
 export class NoStatusColumnError extends Error {}
@@ -554,7 +513,7 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
     requests.push({
       repeatCell: {
         range,
-        cell: { userEnteredFormat: { horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', wrapStrategy: 'CLIP' } },
+        cell: { userEnteredFormat: { horizontalAlignment: 'LEFT', verticalAlignment: 'MIDDLE', wrapStrategy: 'CLIP' } },
         fields: 'userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy,borders)',
       },
     })
@@ -573,6 +532,14 @@ export async function applyTending(config: AppConfig, spreadsheetId: string, tab
       })
     }
   }
+  // Everything from the header down reads from the left, new rows included.
+  requests.push({
+    repeatCell: {
+      range: { sheetId, startRowIndex: tending.headerRow },
+      cell: { userEnteredFormat: { horizontalAlignment: 'LEFT' } },
+      fields: 'userEnteredFormat.horizontalAlignment',
+    },
+  })
   for (const { row, column, text } of tending.cells) {
     requests.push({
       updateCells: {
