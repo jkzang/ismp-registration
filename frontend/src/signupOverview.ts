@@ -4,6 +4,7 @@
  * sign-up counts as their contact status's show-up rate, plus a share of walk-ins on top.
  */
 import { CHAT_STAGES, chatStageOf, needsChat } from './signupColumns'
+import { OTHER_SOURCE, referralSourcesOf } from './referralSources'
 import type { Contact } from './signupTracker'
 import { CONTACT_STATUSES, type ContactStatus, type Gender, type Level, type SeatingPlan } from './types'
 
@@ -73,23 +74,19 @@ export function overviewOf(contacts: Contact[], plan: OverviewPlan) {
 
   const statuses = CONTACT_STATUSES.map((s) => ({ ...s, count: people.filter((p) => p.status === s.value).length }))
 
-  // How they heard: Google Forms joins checkbox answers with ", ".
-  const heard = new Map<string, { label: string; count: number }>()
+  // How they heard, sorted into sources; Other last, with what they wrote.
+  const heard = new Map<string, number>()
+  const otherAnswers: string[] = []
   let noReferral = 0
   for (const p of people) {
-    const answers = p.referral.split(/,\s+/).map((a) => a.trim()).filter(Boolean)
-    if (answers.length === 0) noReferral++
-    for (const answer of answers) {
-      const key = answer.toLowerCase()
-      const entry = heard.get(key) ?? { label: answer, count: 0 }
-      entry.count++
-      heard.set(key, entry)
-    }
+    const sources = referralSourcesOf(p.referral)
+    if (sources.length === 0) noReferral++
+    if (sources.includes(OTHER_SOURCE)) otherAnswers.push(p.referral.trim())
+    for (const source of sources) heard.set(source, (heard.get(source) ?? 0) + 1)
   }
-  const sources = [...heard.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
-  const referrals = sources.length > 7
-    ? [...sources.slice(0, 6), { label: `${sources.length - 6} others`, count: sum(sources.slice(6).map((s) => s.count)) }]
-    : sources
+  const referrals = [...heard.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => +(a.label === OTHER_SOURCE) - +(b.label === OTHER_SOURCE) || b.count - a.count || a.label.localeCompare(b.label))
 
   const wanting = active.filter((p) => p.wantsChat)
   const chats = {
@@ -122,6 +119,7 @@ export function overviewOf(contacts: Contact[], plan: OverviewPlan) {
     statuses,
     referrals,
     noReferral,
+    otherAnswers,
     chats,
     returning,
   }
