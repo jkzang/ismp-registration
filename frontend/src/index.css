@@ -2905,19 +2905,57 @@ button .spinner {
   gap: 18px;
 }
 
+/* The group chat and contact status menus, drawn as colored pills with their own chevron, set in
+   from the edge, in place of the browser's. The pill's color comes from its status class. */
 .signups-list .status-select {
   width: 172px;
-  padding: 5px 8px;
-  border-color: transparent;
+  height: 30px;
+  padding: 0 30px 0 12px;
+  border: none;
   border-radius: 999px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
+  line-height: 30px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-opacity='0.45' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  background-size: 12px;
+  appearance: none;
   cursor: pointer;
+  transition: filter 0.12s, box-shadow 0.15s;
+}
+
+.signups-list .status-select:hover:not(:disabled) {
+  filter: brightness(0.96);
 }
 
 .signups-list .status-select:disabled {
   cursor: default;
-  opacity: 0.8;
+  opacity: 0.7;
+}
+
+/* The open list in the page's own colors, not the pill's. */
+.signups-list .status-select option,
+.signups-list .status-select optgroup {
+  font-weight: 400;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.signups-list .status-select optgroup {
+  font-weight: 700;
+}
+
+@media (prefers-color-scheme: dark) {
+  .signups-list .status-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-opacity='0.6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
+
+  .signups-list .status-select:hover:not(:disabled) {
+    filter: brightness(1.15);
+  }
 }
 
 .signup-actions {
@@ -3909,15 +3947,9 @@ button.overview-action:hover {
   width: 200px;
 }
 
-/* Confirmed, asked to join, and not in the chats yet. */
+/* Confirmed, asked to join, and not in the chats yet: ringed inside the pill, so it keeps its size. */
 .signups-list .chat-select.is-due {
-  box-shadow: 0 0 0 2px var(--accent-fill);
-}
-
-.signups-list .chat-select option,
-.signups-list .chat-select optgroup {
-  color: var(--text);
-  background: var(--bg);
+  box-shadow: inset 0 0 0 2px var(--accent-fill);
 }
 
 /* ---- A sheet's header, shared by Check-in and Sign-ups ----
