@@ -2835,10 +2835,6 @@ button .spinner {
   background: var(--hover-wash);
 }
 
-.signups-list li.is-saving {
-  opacity: 0.7;
-}
-
 /* Someone just added to the sheet: they drop in at their place and stay lit for a few seconds. */
 .signups-list li.is-new {
   animation:
