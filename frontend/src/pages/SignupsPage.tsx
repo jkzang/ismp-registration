@@ -258,9 +258,9 @@ export function SignupsPage() {
   }
 
   /** Texting, calling or emailing someone not reached yet moves them to Awaiting response. */
-  function contacted(contact: Contact) {
+  function contacted(contact: Contact, quietly = false) {
     if (!read?.columns.status || !BEFORE_CONTACT.includes(statusOfContact(contact))) return
-    if (changeStatus(contact, 'awaiting_response')) notify(`${contact.name} is now Awaiting response`)
+    if (changeStatus(contact, 'awaiting_response') && !quietly) notify(`${contact.name} is now Awaiting response`)
   }
 
   const connect = () => readSheet(true)
@@ -390,6 +390,15 @@ export function SignupsPage() {
           templates={templates}
           onChange={setTemplate}
           onClose={() => setEditingMessages(false)}
+          bulk={{
+            sheetId,
+            contacts: current,
+            shown,
+            filtered: !!q || isFiltered(filters),
+            mentorNames: plan.mentors.map((m) => m.name),
+            event,
+            onSent: (contact) => contacted(contact, true),
+          }}
         />
         <section className="signups" aria-label="Sign-ups">
           {tendError && (

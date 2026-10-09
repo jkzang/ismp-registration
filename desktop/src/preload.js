@@ -15,4 +15,6 @@ contextBridge.exposeInMainWorld('ismpDesktop', {
   accessToken: (interactive, domain) => ipcRenderer.invoke('google:access-token', { interactive, domain }),
   cancelSignIn: () => ipcRenderer.invoke('google:cancel'),
   signOut: () => ipcRenderer.invoke('google:sign-out'),
+  checkTexting: () => ipcRenderer.invoke('messages:check'),
+  sendText: (to, body) => ipcRenderer.invoke('messages:send', { to, body }),
 })

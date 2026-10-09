@@ -2,14 +2,15 @@
  * ISMP Registration for macOS: the hosted web app in its own window, the way Slack's and VS Code's
  * desktop apps work. Pages, styles and data all come from the server, so the app looks and behaves
  * like the website and picks up each deploy by itself. What it adds: Google sign-in through the
- * system browser (oauth.js), since Google won't sign in inside an app window, and links that open
- * in the Mac's own apps.
+ * system browser (oauth.js), since Google won't sign in inside an app window, links that open in
+ * the Mac's own apps, and bulk texting through Messages (imessage.js).
  */
 const { app, BrowserWindow, Menu, ipcMain, nativeTheme, net, safeStorage, screen, session, shell } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 const { appUrl, googleClient } = require('./config')
 const { createGoogleAuth } = require('./oauth')
+const { createMessages } = require('./imessage')
 const { createTokenStore } = require('./tokenStore')
 const { dataUrl, errorPage, loadingPage } = require('./pages')
 
@@ -176,6 +177,11 @@ function registerBridge() {
 
   handle('google:cancel', async () => auth.cancel())
   handle('google:sign-out', async () => auth.signOut())
+
+  // Bulk texting through Messages (imessage.js): always as SMS, so from the iPhone's own number.
+  const messages = createMessages()
+  handle('messages:check', async () => messages.check())
+  handle('messages:send', async ({ to, body }) => messages.send(to, body))
 }
 
 // The app

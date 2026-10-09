@@ -13,6 +13,25 @@ deploy by itself. What the app adds:
   gets on the web.
 - **Links open on the Mac.** Text, Call and Email open Messages, FaceTime and Mail. Links to Google
   Sheets and anything else outside the app open in your browser.
+- **Bulk texting through Messages.** The Sign-ups page's **Messages** dialog gets a **Bulk text**
+  tab (only in the app): pick people by contact status (or as the list is filtered), untick anyone,
+  and confirm; the app texts each one through Messages with AppleScript, a few seconds apart, and
+  moves anyone *Not contacted* to *Awaiting response*. Texts always go through Messages' **SMS**
+  account, which only exists while an iPhone forwards its texts to the Mac, so they always come from
+  that iPhone's number, never an Apple Account email. Setting it up, in the tab:
+  1. On the iPhone: **Settings → Apps → Messages → Text Message Forwarding** → turn on this Mac
+     (Messages on the Mac signed in to the same Apple Account).
+  2. Type that iPhone's number under **Send from**, then **Check Messages**. The first time, macOS
+     asks whether *ISMP Registration* may control *Messages*: click **OK**. (Said no? **System
+     Settings → Privacy & Security → Automation → ISMP Registration → Messages**.)
+  3. **Send test text** (to your own number is fine) and say whether it arrived from that number.
+     Sending is only allowed after that, and again after the number changes.
+
+  Never texted: anyone whose Enrollment is *Not a student*, names on the mentor roster, numbers
+  that aren't whole phone numbers, your own number, and a number already in the batch. Anyone with
+  no Enrollment, or already sent the same text from this Mac, starts unticked. Messages is checked
+  again right before the confirmation, which lists who, from which number and the message, and only
+  sends once you tick that you've checked it.
 - **No title bar.** The close, minimize and zoom buttons sit in the sidebar's top row, which drags
   the window like a title bar (`.has-window-controls` in `frontend/src/index.css`).
 - A loading page while the server wakes up (Render's free plan can take a minute), and a
@@ -78,7 +97,9 @@ A $99/year Apple Developer account would remove both prompts: set `mac.identity`
 - `src/main.js`: the window, which links it keeps and which it sends to the Mac, and what it
   answers the web app.
 - `src/oauth.js`: the browser sign-in (PKCE, loopback redirect, refresh, sign-out).
-- `src/preload.js`: `window.ismpDesktop`, the four calls the web app can make.
+- `src/imessage.js`: texting through Messages (AppleScript via `osascript`; the number and message
+  go in as arguments, never as script text).
+- `src/preload.js`: `window.ismpDesktop`, the calls the web app can make.
 - `src/tokenStore.js`: the refresh token, encrypted with the Keychain.
 - `src/pages.js`: the loading, can't-connect and "You're signed in" pages, in the web app's styles.
 

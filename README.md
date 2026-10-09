@@ -116,7 +116,9 @@ Code's desktop apps do: the pages come from the server, so it looks and works th
 each deploy by itself. Google won't sign in inside an app window, so there the **Sign in with
 Google** button opens Google in the default browser and comes back to the app when it's done; one
 sign-in covers Sheets access too, and it lasts until you sign out. Text, Call, Email and links to
-Google Sheets open in the Mac's own apps. Setup and building the `.dmg`: `desktop/README.md`.
+Google Sheets open in the Mac's own apps. The app can also text whole groups at once through
+Messages (the **Bulk text** tab of the Sign-ups page's **Messages** dialog), always as SMS from the
+iPhone number you set there. Setup and building the `.dmg`: `desktop/README.md`.
 
 ## Google Cloud setup (one time)
 
