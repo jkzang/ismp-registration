@@ -2754,7 +2754,7 @@ button .spinner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px 16px;
+  gap: 8px 18px;
   padding: 8px 10px;
   border-radius: 10px;
   transition: background 0.12s, opacity 0.12s;
@@ -2791,7 +2791,7 @@ button .spinner {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 18px;
 }
 
 .signups-list .status-select {
@@ -3184,19 +3184,19 @@ button.overview-action:hover {
   font-variant-numeric: tabular-nums;
 }
 
-/* The list's column names, spaced like its rows. Each one opens its sort and filter menu. */
+/* The list's column names, spaced like its rows: each with its filter menu and sort toggle. */
 .signups-columns {
   display: flex;
   align-items: center;
-  gap: 8px 16px;
-  padding: 0 10px 4px;
+  gap: 8px 18px;
+  padding: 0 10px 6px;
   border-bottom: 1px solid var(--border);
 }
 
 .signups-columns .signup-person,
 .signups-list .signup-person {
   flex: 1;
-  min-width: 0;
+  min-width: 130px;
 }
 
 /* Gender, enrollment and new or returning, each in its own column. */
@@ -3204,19 +3204,19 @@ button.overview-action:hover {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 18px;
 }
 
 .signup-gender {
-  width: 64px;
+  width: 108px;
 }
 
 .signup-level {
-  width: 112px;
+  width: 150px;
 }
 
 .signup-returning {
-  width: 92px;
+  width: 130px;
 }
 
 .signups-column-chat {
@@ -3227,34 +3227,53 @@ button.overview-action:hover {
   width: 172px;
 }
 
+/* Each column is wide enough for its name, a ticked count and the sort toggle, and kept to that
+   width, so nothing pushes into the next column. */
 .column-header {
   position: relative;
   flex: none;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
 }
 
-.column-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  /* Out into the gutter, so the name lines up with the cells under it. */
-  margin-left: -8px;
-  padding: 4px 8px;
-  border: none;
-  border-radius: 6px;
+.column-button,
+.column-name {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   white-space: nowrap;
   color: var(--text-muted);
+}
+
+.column-name {
+  padding: 4px 0;
+}
+
+/* Its text where the chips' and dropdowns' text starts. */
+.column-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 6px;
   background: none;
 }
 
-/* The dropdowns' text starts inside them, and so does their column's name. */
-.signups-column-chat .column-button,
-.signups-column-status .column-button {
-  margin-left: 0;
+/* Signed up's dates start at the edge, so its name does too. */
+.signup-when .column-button {
+  margin-left: -6px;
+}
+
+.column-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .column-button:hover,
@@ -3269,6 +3288,7 @@ button.overview-action:hover {
 }
 
 .column-count {
+  flex: none;
   display: inline-grid;
   place-items: center;
   min-width: 16px;
@@ -3282,14 +3302,41 @@ button.overview-action:hover {
 }
 
 .column-caret {
+  flex: none;
   font-size: 10px;
   opacity: 0.7;
+}
+
+.column-sort {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: none;
+  opacity: 0.45;
+}
+
+.column-sort:hover {
+  opacity: 1;
+  background: var(--hover-wash);
+}
+
+.column-sort.is-on {
+  opacity: 1;
+  color: var(--accent);
 }
 
 .column-menu {
   position: absolute;
   top: calc(100% + 4px);
-  left: -8px;
+  left: 0;
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -3312,12 +3359,6 @@ button.overview-action:hover {
   right: 0;
 }
 
-.column-sorts {
-  display: flex;
-  flex-direction: column;
-}
-
-.column-sorts button,
 .column-option {
   display: flex;
   align-items: center;
@@ -3332,23 +3373,8 @@ button.overview-action:hover {
   cursor: pointer;
 }
 
-.column-sorts button:hover,
 .column-option:hover {
   background: var(--hover-wash);
-}
-
-.column-sorts button.is-on {
-  font-weight: 600;
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.column-options {
-  display: flex;
-  flex-direction: column;
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
 }
 
 .column-option input {
@@ -3387,7 +3413,7 @@ button.overview-action:hover {
   container: signups / inline-size;
 }
 
-@container signups (max-width: 1080px) {
+@container signups (max-width: 1300px) {
   .signups-list li {
     flex-wrap: wrap;
   }
@@ -3425,15 +3451,29 @@ button.overview-action:hover {
     min-width: 0;
   }
 
-  .signups-columns .column-button {
-    margin-left: 0;
-    padding: 5px 10px;
+  .signups-columns .column-header {
+    padding: 0 2px 0 0;
     border-radius: 999px;
     background: var(--btn);
   }
 
+  .signups-columns .column-name {
+    padding: 4px 0 4px 10px;
+  }
+
+  .signups-columns .column-button {
+    margin-left: 0;
+    padding: 5px 4px 5px 10px;
+    border-radius: 999px 0 0 999px;
+  }
+
   .signups-columns .column-button.is-filtered {
     background: var(--accent-soft);
+  }
+
+  /* Reach out has nothing to sort or filter. */
+  .signups-columns .signup-actions {
+    display: none;
   }
 }
 

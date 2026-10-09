@@ -33,11 +33,9 @@ describe('column filters', () => {
     expect(names({ signedUp: [''] })).toEqual(['dee'])
   })
 
-  it('finds who to add to the group chats, and who can be reached how', () => {
+  it('finds who to add to the group chats', () => {
     expect(names({ groupChat: [TO_ADD] })).toEqual(['Amy'])
     expect(names({ groupChat: ['complete'] })).toEqual(['Cy'])
-    expect(names({ reach: ['email'] })).toEqual(['Bo', 'dee'])
-    expect(names({ reach: ['none'] })).toEqual(['Cy'])
   })
 
   it('counts each value among who the other columns let through', () => {

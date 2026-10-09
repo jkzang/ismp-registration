@@ -1,13 +1,13 @@
 /**
- * The Sign-ups list's column headers: each one sorts the list and filters it. Within a column, the
+ * The Sign-ups list's column headers: each one sorts the list, and most filter it. Within a column, the
  * ticked values add up (Girl or Guy); across columns they narrow (Girl and Grad). Rows come in as
  * the sheet has them, with any status still being saved already applied.
  */
 import { CHAT_STAGES, chatStageOf, GROUP_CHAT_STATUSES, needsChat } from './signupColumns'
-import { dialable, STATUS_GROUPS, type Contact } from './signupTracker'
+import { STATUS_GROUPS, type Contact } from './signupTracker'
 import { CONTACT_STATUSES } from './types'
 
-export type ColumnId = 'signedUp' | 'name' | 'gender' | 'level' | 'returning' | 'groupChat' | 'status' | 'reach'
+export type ColumnId = 'signedUp' | 'name' | 'gender' | 'level' | 'returning' | 'groupChat' | 'status'
 
 export type FilterOption = { value: string; label: string; group?: string }
 export type SortDir = 'asc' | 'desc'
@@ -32,6 +32,8 @@ type Column = {
   /** Null sorts last either way. */
   sortKey: (row: Row) => number | string | null
   sortLabels: [asc: string, desc: string]
+  /** The way a first click sorts. */
+  firstDir?: SortDir
 }
 
 const rank = (order: string[], value: string) => (value ? order.indexOf(value) : -1)
@@ -67,6 +69,7 @@ export const COLUMNS: Record<ColumnId, Column> = {
       return r.contact.signedUp && !Number.isNaN(time) ? time : null
     },
     sortLabels: ['Oldest first', 'Newest first'],
+    firstDir: 'desc',
   },
   name: {
     label: 'Name',
@@ -126,24 +129,7 @@ export const COLUMNS: Record<ColumnId, Column> = {
     sortKey: (r) => rank(STATUSES, r.contact.status),
     sortLabels: ['Not contacted first', 'Not inviting first'],
   },
-  reach: {
-    label: 'Reach out',
-    options: [
-      { value: 'phone', label: 'Has a phone number' },
-      { value: 'email', label: 'Has an email' },
-      { value: 'none', label: 'Neither' },
-    ],
-    values: (c) => {
-      const ways = [...(hasPhone(c) ? ['phone'] : []), ...(hasEmail(c) ? ['email'] : [])]
-      return ways.length ? ways : ['none']
-    },
-    sortKey: (r) => (hasPhone(r.contact) ? 2 : 0) + (hasEmail(r.contact) ? 1 : 0),
-    sortLabels: ['Fewest ways first', 'Most ways first'],
-  },
 }
-
-const hasPhone = (c: Contact) => !!dialable(c.phone)
-const hasEmail = (c: Contact) => c.email.includes('@')
 
 export const DEFAULT_SORT: Sort = { column: 'signedUp', dir: 'desc' }
 
