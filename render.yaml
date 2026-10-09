@@ -31,6 +31,9 @@ services:
         sync: false
       - key: GOOGLE_APP_ID
         sync: false
+      # Optional: the Mac app's OAuth client ID (see desktop/README.md).
+      - key: GOOGLE_DESKTOP_CLIENT_ID
+        sync: false
       - key: ALLOWED_GOOGLE_DOMAIN
         value: acts2.network
       # Report-only until sign-in and the Picker are confirmed working with no CSP errors in the

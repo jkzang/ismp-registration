@@ -73,6 +73,15 @@ class GoogleSignInTests(APITestCase):
                 with self.assertRaises(NotAllowed):
                     verify_credential('token')
 
+    def test_verify_accepts_tokens_from_the_desktop_client(self):
+        with mock.patch('registration.google_auth.id_token.verify_oauth2_token', return_value=self.claims()) as verify:
+            with override_settings(GOOGLE_DESKTOP_CLIENT_ID=''):
+                verify_credential('token')
+            self.assertEqual(verify.call_args.args[2], ['client-123'])
+            with override_settings(GOOGLE_DESKTOP_CLIENT_ID='desktop-456'):
+                verify_credential('token')
+            self.assertEqual(verify.call_args.args[2], ['client-123', 'desktop-456'])
+
     def test_verify_rejects_bad_tokens(self):
         with mock.patch('registration.google_auth.id_token.verify_oauth2_token', side_effect=ValueError('bad')):
             with self.assertRaises(NotAllowed):

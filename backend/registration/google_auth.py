@@ -11,11 +11,15 @@ def verify_credential(credential):
     """Verifies a Google Sign-In ID token and returns its claims, if it belongs to the allowed domain.
 
     Workspace accounts carry an `hd` claim; a Google account registered on an address at the domain
-    doesn't, so a verified email at the domain is accepted too."""
+    doesn't, so a verified email at the domain is accepted too. The token can come from the web
+    client (the browser's sign-in button) or the desktop client (the Mac app's sign-in)."""
     if not settings.GOOGLE_CLIENT_ID:
         raise NotAllowed('Google sign-in is not configured on the server.')
+    audiences = [settings.GOOGLE_CLIENT_ID]
+    if settings.GOOGLE_DESKTOP_CLIENT_ID:
+        audiences.append(settings.GOOGLE_DESKTOP_CLIENT_ID)
     try:
-        claims = id_token.verify_oauth2_token(credential, google_requests.Request(), settings.GOOGLE_CLIENT_ID)
+        claims = id_token.verify_oauth2_token(credential, google_requests.Request(), audiences)
     except ValueError as err:
         raise NotAllowed('That Google sign-in could not be verified.') from err
     domain = settings.ALLOWED_GOOGLE_DOMAIN

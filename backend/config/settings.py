@@ -38,6 +38,9 @@ if os.environ.get('RENDER_EXTERNAL_HOSTNAME'):
     ALLOWED_HOSTS.append(os.environ['RENDER_EXTERNAL_HOSTNAME'])
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+# The Mac app's OAuth client (type "Desktop app"), which signs in through the system browser. Only
+# its ID is needed here, so the server accepts the sign-ins it hands over; see desktop/README.md.
+GOOGLE_DESKTOP_CLIENT_ID = os.environ.get('GOOGLE_DESKTOP_CLIENT_ID', '')
 # Browser key for the Google Picker; public by design, restrict it by HTTP referrer in Google Cloud.
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY', '')
 # The Google Cloud project number; the Picker needs it so picked files are shared with this app.

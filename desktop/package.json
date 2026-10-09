@@ -1,0 +1,49 @@
+{
+  "name": "ismp-registration-desktop",
+  "productName": "ISMP Registration",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ISMP Registration for macOS: the web app in its own window.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "dist": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "electron-builder": "26.16.1"
+  },
+  "ismp": {
+    "appUrl": "https://ismp-registration.onrender.com"
+  },
+  "build": {
+    "appId": "network.acts2.ismp-registration",
+    "productName": "ISMP Registration",
+    "files": [
+      "src/**/*",
+      "package.json",
+      "google-client.json"
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "ISMP Registration"
+    }
+  }
+}
