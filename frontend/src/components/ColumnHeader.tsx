@@ -4,15 +4,17 @@ import { COLUMNS, type ColumnId, type Sort, type SortDir } from '../signupFilter
 /**
  * A Sign-ups column's name, which opens its filter menu when it has one, and its sort toggle beside
  * it. The first click sorts by the column; the next ones flip the direction. `end` opens the menu
- * leftward, for the columns at the row's right.
+ * leftward, for the columns at the row's right. `badge` is a red count of people still to get to,
+ * drawn over the space beside the name so it never moves anything as it comes and goes.
  */
-export function ColumnHeader({ id, className, sort, picked, counts, end, onSort, onPick }: {
+export function ColumnHeader({ id, className, sort, picked, counts, end, badge, onSort, onPick }: {
   id: ColumnId
   className: string
   sort: Sort
   picked: string[]
   counts: Map<string, number>
   end?: boolean
+  badge?: { count: number; label: string }
   onSort: (dir: SortDir) => void
   onPick: (values: string[]) => void
 }) {
@@ -73,6 +75,13 @@ export function ColumnHeader({ id, className, sort, picked, counts, end, onSort,
       >
         {sorted === 'asc' ? '↑' : sorted === 'desc' ? '↓' : '↕'}
       </button>
+      {badge && badge.count > 0 && (
+        <span className="column-badge-slot">
+          <span className="column-badge" role="img" aria-label={badge.label} title={badge.label}>
+            {badge.count}
+          </span>
+        </span>
+      )}
       {open && (
         <div className={`column-menu${end ? ' is-end' : ''}`} role="dialog" aria-label={`Filter by ${column.label}`}>
           {groups.map((group) => {

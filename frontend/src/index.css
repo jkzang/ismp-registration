@@ -3086,20 +3086,6 @@ button .spinner {
   color: var(--text-muted);
 }
 
-.overview-hero {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.overview-number {
-  font-size: 36px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
 .overview-note {
   font-size: 12px;
   color: var(--text-muted);
@@ -3131,26 +3117,65 @@ button .spinner {
   background: var(--ok-soft);
 }
 
-.overview-equation {
+/* Contact status: people, show-up rate and expected per status, then the expected turnout. */
+.overview-status {
+  width: 100%;
   border-collapse: collapse;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
-.overview-equation td {
-  padding: 2px 0;
-  color: var(--text-muted);
-}
-
-.overview-equation td:nth-child(2) {
-  padding: 0 12px;
+.overview-status th,
+.overview-status td {
+  padding: 3px 0 3px 10px;
+  text-align: right;
   white-space: nowrap;
 }
 
-.overview-equation td:last-child {
-  text-align: right;
-  color: var(--text);
+.overview-status th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.overview-status thead th {
+  font-size: 12px;
   font-weight: 600;
+  color: var(--text-muted);
+}
+
+.overview-status tbody th {
+  font-weight: 400;
+}
+
+.overview-status tbody th .checkin-status {
+  display: inline-block;
+}
+
+.overview-status tbody td {
+  font-weight: 600;
+}
+
+.overview-status tbody td.muted {
+  font-weight: 400;
+}
+
+.overview-status tfoot th,
+.overview-status tfoot td {
+  font-weight: 800;
+}
+
+.overview-status tfoot td.muted {
+  font-weight: 400;
+}
+
+.overview-status tfoot tr:first-child th,
+.overview-status tfoot tr:first-child td {
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+}
+
+.overview-status tfoot tr:last-child td:last-child {
+  font-size: 15px;
 }
 
 .overview-ratios {
@@ -3508,6 +3533,38 @@ button.overview-action:hover {
   opacity: 0.7;
 }
 
+/* A red count of who's still to get to, beside the sort toggle. Its slot takes no room, so the
+   header looks the same with or without it. */
+.column-badge-slot {
+  position: relative;
+  flex: none;
+  align-self: stretch;
+  width: 0;
+  /* Takes back the header's gap before it too. */
+  margin-left: -2px;
+}
+
+.column-badge {
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  transform: translateY(-50%);
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #fff;
+  background: #dc2626;
+  pointer-events: none;
+}
+
 .column-sort {
   flex: none;
   display: grid;
@@ -3681,9 +3738,10 @@ button.overview-action:hover {
     display: none;
   }
 
+  /* Rows far enough apart for the red counts on the pills' corners. */
   .signups-columns {
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 9px 6px;
     padding-bottom: 8px;
   }
 
@@ -3716,6 +3774,23 @@ button.overview-action:hover {
 
   .signups-columns .column-button.is-filtered {
     background: var(--accent-soft);
+  }
+
+  /* On the pill's corner, so the pills keep their widths. */
+  .signups-columns .column-badge-slot {
+    display: contents;
+  }
+
+  .signups-columns .column-badge {
+    top: -7px;
+    left: auto;
+    right: -7px;
+    transform: none;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+    box-shadow: 0 0 0 2px var(--bg);
   }
 
   /* Reach out has nothing to sort or filter. */
@@ -3907,7 +3982,7 @@ button.overview-action:hover {
   }
 }
 
-/* New or returning, from the sheet's column: the chip beside a name and the overview's split bar. */
+/* New or returning, from the sheet's column: the chip beside a name and the overview's pie. */
 :root {
   --returning-new: #2563eb;
   --returning-returning: #d97706;
@@ -3918,40 +3993,47 @@ button.overview-action:hover {
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --returning-new: #60a5fa;
-    --returning-returning: #fbbf24;
+    --returning-new: #3b82f6;
+    --returning-returning: #d97706;
   }
 
   .detail-chip.returning-new { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
   .detail-chip.returning-returning { background: rgba(217, 119, 6, 0.2); color: #fcd34d; }
 }
 
-.split-bar {
+.returning-pie {
   display: flex;
-  gap: 2px;
-  height: 14px;
+  align-items: center;
+  gap: 16px;
 }
 
-.split-fill,
-.split-empty {
-  display: block;
-  min-width: 4px;
-  border-radius: 4px;
+.returning-pie svg {
+  flex: none;
+  width: 104px;
+  height: 104px;
+  overflow: visible;
 }
 
-.split-empty {
-  flex: 1;
-  background: var(--hover-wash);
+/* A 2px gap of the card's own color between the slices. */
+.pie-slice {
+  stroke: var(--surface);
+  stroke-width: 2px;
+  stroke-linejoin: round;
 }
 
-.split-fill.returning-new,
-.split-swatch.returning-new { background: var(--returning-new); }
-.split-fill.returning-returning,
-.split-swatch.returning-returning { background: var(--returning-returning); }
+.pie-slice.returning-new { fill: var(--returning-new); }
+.pie-slice.returning-returning { fill: var(--returning-returning); }
 
-.split-fill:hover {
+.pie-slice:hover {
   opacity: 0.8;
 }
+
+.pie-empty {
+  fill: var(--hover-wash);
+}
+
+.split-swatch.returning-new { background: var(--returning-new); }
+.split-swatch.returning-returning { background: var(--returning-returning); }
 
 .split-legend {
   display: flex;
@@ -3965,8 +4047,16 @@ button.overview-action:hover {
 
 .split-legend li {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 0 8px;
+}
+
+/* The percentage and confirmed under the name, in line with it past the swatch. */
+.split-detail {
+  flex-basis: 100%;
+  padding-left: 18px;
+  font-size: 12px;
 }
 
 .split-swatch {
@@ -4150,6 +4240,54 @@ button.overview-action:hover {
   width: 38px;
   border: 1px solid var(--input-border);
   background: var(--bg);
+}
+
+/* Signed up, expected and with walk-ins, beside the search, boxed like it. */
+.turnout-summary {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: 38px;
+  margin: 0;
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.turnout-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0 12px;
+  line-height: 36px;
+  white-space: nowrap;
+}
+
+.turnout-summary > div + div {
+  border-left: 1px solid var(--border);
+}
+
+.turnout-summary dt {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.turnout-summary dd {
+  order: -1;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.turnout-summary > div.is-warn {
+  background: var(--warn-soft);
+}
+
+.turnout-summary > div.is-warn dt,
+.turnout-summary > div.is-warn dd {
+  color: var(--warn-text);
 }
 
 .signups-columns {

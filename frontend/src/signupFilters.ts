@@ -121,6 +121,8 @@ export const COLUMNS: Record<ColumnId, Column> = {
   },
   status: {
     label: 'Contact status',
+    // Leaves room beside it for the count of who's not contacted yet.
+    short: 'Status',
     // Under the headings the status tabs had, so a whole group can be ticked at once.
     options: STATUS_GROUPS.filter((g) => g.statuses).flatMap((g) =>
       g.statuses!.map((s) => ({ value: s, label: CONTACT_STATUSES.find((c) => c.value === s)!.label, group: g.label })),

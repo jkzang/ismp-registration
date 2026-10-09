@@ -1,10 +1,10 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react'
 import type { Overview } from '../signupOverview'
 import { RETURNING_LABELS } from '../signupColumns'
 import { CheckIcon, CloseIcon, WarningIcon } from './icons'
 
 const GENDERS = { female: 'Girls', male: 'Guys', '': 'No gender' } as const
-const LEVELS = { undergrad: 'Undergrad', grad: 'Grad', other: 'Not a student', '': 'No level' } as const
+const LEVELS = { undergrad: 'Undergrad', grad: 'Grad', '': 'No level' } as const
 
 const one = (n: number) => (Math.round(n * 10) / 10).toString()
 const percent = (rate: number) => `${Math.round(rate * 100)}%`
@@ -18,13 +18,31 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
+/** Slides each row from where it was to where it is now, when the counts reorder the list. */
+function useReorderMotion(list: RefObject<HTMLUListElement | null>) {
+  const tops = useRef(new Map<string, number>())
+  useLayoutEffect(() => {
+    const rows = [...(list.current?.children ?? [])] as HTMLElement[]
+    const before = tops.current
+    tops.current = new Map(rows.map((row) => [row.dataset.key!, row.offsetTop]))
+    if (before.size === 0 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    for (const row of rows) {
+      const was = before.get(row.dataset.key!)
+      const shift = was === undefined ? 0 : was - row.offsetTop
+      if (shift) row.animate([{ transform: `translateY(${shift}px)` }, { transform: 'none' }], { duration: 250, easing: 'ease-out' })
+    }
+  })
+}
+
 /** One thin bar per row, scaled to the largest, with its count beside it. */
 function BarList({ rows, total }: { rows: { key: string; label: ReactNode; count: number }[]; total: number }) {
   const max = Math.max(1, ...rows.map((r) => r.count))
+  const ref = useRef<HTMLUListElement>(null)
+  useReorderMotion(ref)
   return (
-    <ul className="bar-list">
+    <ul className="bar-list" ref={ref}>
       {rows.map((r) => (
-        <li key={r.key} title={`${r.count} of ${total} (${percent(total ? r.count / total : 0)})`}>
+        <li key={r.key} data-key={r.key} title={`${r.count} of ${total} (${percent(total ? r.count / total : 0)})`}>
           <span className="bar-label">{r.label}</span>
           <span className="bar-track">
             {r.count > 0 && <span className="bar-fill" style={{ width: `${(r.count / max) * 100}%` }} />}
@@ -36,36 +54,63 @@ function BarList({ rows, total }: { rows: { key: string; label: ReactNode; count
   )
 }
 
-/** New and returning as one bar split in two, with a legend that carries the numbers. */
+/** A pie slice from `from` to `to`, as fractions of the circle clockwise from the top. */
+function slicePath(from: number, to: number, r: number) {
+  const point = (t: number) => {
+    const a = 2 * Math.PI * t - Math.PI / 2
+    return `${(r + r * Math.cos(a)).toFixed(2)} ${(r + r * Math.sin(a)).toFixed(2)}`
+  }
+  return `M ${r} ${r} L ${point(from)} A ${r} ${r} 0 ${to - from > 0.5 ? 1 : 0} 1 ${point(to)} Z`
+}
+
+/** New and returning as a pie, with a legend that carries the numbers. */
 function ReturningChart({ rows, total }: { rows: Overview['returning']; total: number }) {
   const known = rows.filter((r) => r.value !== '')
   const sum = known.reduce((n, r) => n + r.count, 0)
   const blank = rows.find((r) => r.value === '')?.count ?? 0
+  const R = 50
+  let at = 0
+  const slices = known.flatMap((r) => {
+    if (r.count === 0) return []
+    const from = at
+    at += r.count / sum
+    return [{ ...r, from, to: at }]
+  })
+  const tip = (r: (typeof known)[number]) =>
+    `${RETURNING_LABELS[r.value as 'new']}: ${r.count} of ${sum} (${percent(r.count / sum)}) · ${r.confirmed} confirmed`
   return (
     <>
-      <div className="split-bar" role="img" aria-label={known.map((r) => `${r.count} ${RETURNING_LABELS[r.value as 'new']}`).join(', ')}>
-        {sum === 0 && <span className="split-empty" />}
-        {known.map((r) =>
-          r.count > 0 ? (
-            <span
-              key={r.value}
-              className={`split-fill returning-${r.value}`}
-              style={{ flexGrow: r.count }}
-              title={`${RETURNING_LABELS[r.value as 'new']}: ${r.count} of ${sum} (${percent(r.count / sum)}) · ${r.confirmed} confirmed`}
-            />
-          ) : null,
-        )}
+      <div className="returning-pie">
+        <svg
+          viewBox={`0 0 ${R * 2} ${R * 2}`}
+          role="img"
+          aria-label={known.map((r) => `${r.count} ${RETURNING_LABELS[r.value as 'new']}`).join(', ')}
+        >
+          {slices.length === 0 && <circle className="pie-empty" cx={R} cy={R} r={R} />}
+          {slices.map((r) =>
+            // A whole circle can't be drawn as an arc.
+            slices.length === 1 ? (
+              <circle key={r.value} className={`pie-slice returning-${r.value}`} cx={R} cy={R} r={R}>
+                <title>{tip(r)}</title>
+              </circle>
+            ) : (
+              <path key={r.value} className={`pie-slice returning-${r.value}`} d={slicePath(r.from, r.to, R)}>
+                <title>{tip(r)}</title>
+              </path>
+            ),
+          )}
+        </svg>
+        <ul className="split-legend">
+          {known.map((r) => (
+            <li key={r.value}>
+              <span className={`split-swatch returning-${r.value}`} aria-hidden="true" />
+              <span className="split-name">{RETURNING_LABELS[r.value as 'new']}</span>
+              <span className="split-count">{r.count}</span>
+              <span className="split-detail muted">{sum ? percent(r.count / sum) : '—'} · {r.confirmed} confirmed</span>
+            </li>
+          ))}
+        </ul>
       </div>
-      <ul className="split-legend">
-        {known.map((r) => (
-          <li key={r.value}>
-            <span className={`split-swatch returning-${r.value}`} aria-hidden="true" />
-            <span className="split-name">{RETURNING_LABELS[r.value as 'new']}</span>
-            <span className="split-count">{r.count}</span>
-            <span className="muted">{sum ? percent(r.count / sum) : '—'} · {r.confirmed} confirmed</span>
-          </li>
-        ))}
-      </ul>
       {blank > 0 && (
         <p className="overview-note">
           {blank} of {total} not looked up yet. They’re checked against the spreadsheet’s “Student Database” tab by name, phone or email.
@@ -75,9 +120,37 @@ function ReturningChart({ rows, total }: { rows: Overview['returning']; total: n
   )
 }
 
+/** Signed up, expected and expected with walk-ins, beside the Sign-ups page's search. */
+export function TurnoutSummary({ overview, capacity }: { overview: Overview; capacity: number | null }) {
+  const { estimate } = overview
+  const over = capacity !== null && estimate.total > capacity
+  const stats = [
+    { label: 'Signed up', value: overview.total, title: 'Everyone in the sign-up tab' },
+    { label: 'Expected', value: estimate.likely, title: 'Each sign-up times their contact status’s show-up rate' },
+    {
+      label: 'With walk-ins',
+      value: estimate.total,
+      title: `Expected plus ${percent(estimate.walkInRate)} walk-ins${capacity !== null ? ` · capacity ${capacity}` : ''}${
+        over ? ` · ${estimate.total - capacity} over` : ''
+      }`,
+      warn: over,
+    },
+  ]
+  return (
+    <dl className="turnout-summary" aria-label="Turnout">
+      {stats.map((s) => (
+        <div key={s.label} className={s.warn ? 'is-warn' : undefined} title={s.title}>
+          <dt>{s.label}</dt>
+          <dd>{s.value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 /**
- * The Sign-ups page's overview: expected turnout, mentors to students, who's coming, contact
- * statuses, how people heard, and the group chats. `onShowChatList` filters the list to the
+ * The Sign-ups page's overview: contact statuses with the expected turnout, mentors to students,
+ * who's coming, new and returning, how people heard, and the group chats. `onShowChatList` filters the list to the
  * confirmed people still to add to the chats.
  */
 export function SignupsOverview({ overview, capacity, columns, onShowChatList }: {
@@ -89,36 +162,52 @@ export function SignupsOverview({ overview, capacity, columns, onShowChatList }:
   const { estimate, ratios, chats } = overview
   return (
     <div className="overview" aria-label="Overview">
-      <Card title="Expected turnout">
-        <div className="overview-hero">
-          <span className="overview-number">{estimate.total}</span>
-          <span className="muted">
-            of {overview.total} signed up
-            {capacity !== null && ` · capacity ${capacity}`}
-          </span>
-        </div>
-        {capacity !== null && estimate.total > capacity && (
-          <p className="overview-flag is-warn">
-            <WarningIcon /> {estimate.total - capacity} over capacity
-          </p>
-        )}
-        <table className="overview-equation">
+      <Card title="Contact status">
+        <table className="overview-status">
+          <thead>
+            <tr>
+              <th />
+              <th>People</th>
+              <th>Show-up</th>
+              <th>Expected</th>
+            </tr>
+          </thead>
           <tbody>
-            {estimate.terms.map((t) => (
-              <tr key={t.label}>
-                <td>{t.count} {t.label.toLowerCase()}</td>
-                <td>× {percent(t.rate)}</td>
-                <td>{one(t.count * t.rate)}</td>
+            {overview.statuses.map((s) => (
+              <tr key={s.value}>
+                <th>
+                  <span className={`checkin-status status-${s.value}`}>{s.label}</span>
+                </th>
+                <td>{s.count}</td>
+                <td className="muted">{s.rate > 0 ? percent(s.rate) : '—'}</td>
+                <td>{s.expected > 0 || (s.count > 0 && s.rate > 0) ? one(s.expected) : '—'}</td>
               </tr>
             ))}
-            <tr>
-              <td>Walk-ins</td>
-              <td>+ {percent(estimate.walkInRate)}</td>
-              <td>{estimate.walkIns}</td>
-            </tr>
           </tbody>
+          <tfoot>
+            <tr>
+              <th>Expected turnout</th>
+              <td>{overview.total}</td>
+              <td />
+              <td>{estimate.likely}</td>
+            </tr>
+            <tr>
+              <th>With walk-ins</th>
+              <td />
+              <td className="muted">+ {percent(estimate.walkInRate)}</td>
+              <td>{estimate.total}</td>
+            </tr>
+          </tfoot>
         </table>
-        <p className="overview-note">Other statuses count as 0%, and Not a student isn’t counted.</p>
+        {capacity !== null && estimate.total > capacity && (
+          <p className="overview-flag is-warn">
+            <WarningIcon /> {estimate.total - capacity} over capacity ({capacity})
+          </p>
+        )}
+        <p className="overview-note">
+          Expected is each status’s people times its show-up rate, the way the tables are planned. Not a student isn’t
+          counted{overview.checkedIn > 0 && ', and anyone checked in counts in full'}.
+        </p>
       </Card>
 
       <Card title="Mentors to students">
@@ -179,18 +268,9 @@ export function SignupsOverview({ overview, capacity, columns, onShowChatList }:
             ))}
           </tbody>
         </table>
-        <p className="overview-note">Everyone not turned down: {overview.active} of {overview.total}.</p>
-      </Card>
-
-      <Card title="Contact status">
-        <BarList
-          total={overview.total}
-          rows={overview.statuses.map((s) => ({
-            key: s.value,
-            label: <span className={`checkin-status status-${s.value}`}>{s.label}</span>,
-            count: s.count,
-          }))}
-        />
+        <p className="overview-note">
+          Students not turned down: {overview.activeStudents} of {overview.total}. Not a student isn’t shown.
+        </p>
       </Card>
 
       <Card title="New vs returning">

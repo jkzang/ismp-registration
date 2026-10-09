@@ -30,15 +30,7 @@ export function overviewOf(contacts: Contact[], plan: OverviewPlan) {
   })
   const isStudent = (p: (typeof people)[number]) => p.level !== 'other'
 
-  // Estimated turnout, term by term.
-  const terms = [
-    ...(people.some((p) => p.checkedIn) ? [{ label: 'Checked in', count: people.filter((p) => p.checkedIn).length, rate: 1 }] : []),
-    ...CONTACT_STATUSES.flatMap(({ value, label }) => {
-      const rate = plan.show_up_rates[value] ?? 0
-      const count = people.filter((p) => !p.checkedIn && isStudent(p) && p.status === value).length
-      return rate > 0 && count > 0 ? [{ label, count, rate }] : []
-    }).sort((a, b) => b.rate - a.rate),
-  ]
+  // Estimated turnout: each status's people times its show-up rate, plus walk-ins on top.
   const likely = Math.round(sum(people.map((p) => p.chance)))
   const walkIns = Math.round(plan.walk_in_rate * likely)
 
@@ -60,21 +52,26 @@ export function overviewOf(contacts: Contact[], plan: OverviewPlan) {
   })
   const noGender = sum(people.filter((p) => !p.gender).map((p) => p.chance)) * (1 + plan.walk_in_rate)
 
-  // Who's still coming (everyone not turned down either way), by gender and level.
+  // Who's still coming (every student not turned down either way), by gender and level.
   const active = people.filter((p) => !NOT_COMING.includes(p.status))
-  const genders = (['female', 'male', ''] as const).filter((g) => g !== '' || active.some((p) => !p.gender))
-  const levels = (['undergrad', 'grad', 'other', ''] as const).filter((l) => l !== '' || active.some((p) => !p.level))
+  const activeStudents = active.filter(isStudent)
+  const genders = (['female', 'male', ''] as const).filter((g) => g !== '' || activeStudents.some((p) => !p.gender))
+  const levels = (['undergrad', 'grad', ''] as const).filter((l) => l !== '' || activeStudents.some((p) => !p.level))
   const breakdown = genders.map((gender) => ({
     gender,
     cells: levels.map((level) => {
-      const here = active.filter((p) => p.gender === gender && p.level === level)
+      const here = activeStudents.filter((p) => p.gender === gender && p.level === level)
       return { level, count: here.length, confirmed: here.filter((p) => p.status === 'confirmed').length }
     }),
   }))
 
-  const statuses = CONTACT_STATUSES.map((s) => ({ ...s, count: people.filter((p) => p.status === s.value).length }))
+  // Each status's people and how many of them are expected (checked in counts as all of them).
+  const statuses = CONTACT_STATUSES.map((s) => {
+    const here = people.filter((p) => p.status === s.value)
+    return { ...s, count: here.length, rate: plan.show_up_rates[s.value] ?? 0, expected: sum(here.map((p) => p.chance)) }
+  })
 
-  // How they heard, sorted into sources; Other last, with what they wrote.
+  // How they heard, sorted into sources, most first; with what those under Other wrote.
   const heard = new Map<string, number>()
   const otherAnswers: string[] = []
   let noReferral = 0
@@ -86,7 +83,7 @@ export function overviewOf(contacts: Contact[], plan: OverviewPlan) {
   }
   const referrals = [...heard.entries()]
     .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => +(a.label === OTHER_SOURCE) - +(b.label === OTHER_SOURCE) || b.count - a.count || a.label.localeCompare(b.label))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
 
   const wanting = active.filter((p) => p.wantsChat)
   const chats = {
@@ -94,6 +91,8 @@ export function overviewOf(contacts: Contact[], plan: OverviewPlan) {
     confirmed: wanting.filter((p) => p.status === 'confirmed').length,
     added: people.filter((p) => p.groupChat && chatStageOf(p.groupChat) === 'complete').length,
     toAdd: wanting.filter((p) => p.status === 'confirmed' && needsChat(p.groupChat)).length,
+    // Still Not Invited, among everyone not turned down.
+    toInvite: active.filter((p) => p.groupChat && chatStageOf(p.groupChat) === 'todo').length,
     stages: CHAT_STAGES.map((s) => ({
       ...s,
       count: people.filter((p) => p.groupChat && chatStageOf(p.groupChat) === s.value).length,
@@ -110,7 +109,9 @@ export function overviewOf(contacts: Contact[], plan: OverviewPlan) {
   return {
     total: people.length,
     active: active.length,
-    estimate: { terms, likely, walkIns, walkInRate: plan.walk_in_rate, total: likely + walkIns },
+    activeStudents: activeStudents.length,
+    checkedIn: people.filter((p) => p.checkedIn).length,
+    estimate: { likely, walkIns, walkInRate: plan.walk_in_rate, total: likely + walkIns },
     ratios,
     noGender,
     idealPerMentor: plan.ideal_per_mentor,

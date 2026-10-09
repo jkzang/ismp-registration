@@ -6,7 +6,7 @@ import { ColumnHeader } from '../components/ColumnHeader'
 import { MessageMenu } from '../components/MessageMenu'
 import { MessagesDialog } from '../components/MessagesDialog'
 import { GENDER_LABELS, LEVEL_LABELS, SignupPersonDialog } from '../components/SignupPersonDialog'
-import { OverviewDialog } from '../components/SignupsOverview'
+import { OverviewDialog, TurnoutSummary } from '../components/SignupsOverview'
 import { StatusMenu, type StatusOption } from '../components/StatusMenu'
 import { StatusChangedError, writeGroupChat, writeStatus } from '../google'
 import { useSheet } from '../sheetContext'
@@ -305,7 +305,7 @@ export function SignupsPage() {
   shownKeys.current = new Set(shown.map((c) => c.key))
   const messagesFor = (c: Contact) => templates.map((t) => fillMessage(t, c, event))
   /** A column's header, with counts among who the search and the other columns let through. */
-  const header = (id: ColumnId, className: string, end?: boolean) => (
+  const header = (id: ColumnId, className: string, end?: boolean, badge?: { count: number; label: string }) => (
     <ColumnHeader
       id={id}
       className={className}
@@ -313,6 +313,7 @@ export function SignupsPage() {
       picked={filters[id] ?? []}
       counts={optionCounts(searched, filters, id, now)}
       end={end}
+      badge={badge}
       onSort={(dir) => setSort({ column: id, dir })}
       onPick={(values) => setFilters((f) => ({ ...f, [id]: values }))}
     />
@@ -322,6 +323,9 @@ export function SignupsPage() {
     read
       ? overviewOf(current, { ...plan, students })
       : null
+  // The red counts by the Group chat and Contact status column names: who's still to get to.
+  const toInvite = overview?.chats.toInvite ?? 0
+  const notContacted = overview?.statuses.find((s) => s.value === 'not_contacted')?.count ?? 0
 
   return (
     <div className="sheet-view signups-page">
@@ -399,6 +403,7 @@ export function SignupsPage() {
                   aria-label="Search by name, nickname, phone, email or social media ID"
                 />
               </label>
+              {overview && <TurnoutSummary overview={overview} capacity={sheet.capacity} />}
               <div className="signups-tools">
                 <button
                   type="button"
@@ -437,8 +442,14 @@ export function SignupsPage() {
                 {header('returning', 'signup-returning')}
               </div>
               <div className="signup-controls">
-                {header('groupChat', 'signups-column-chat', true)}
-                {header('status', 'signups-column-status', true)}
+                {header('groupChat', 'signups-column-chat', true, {
+                  count: toInvite,
+                  label: `${toInvite} still to invite to the group chats`,
+                })}
+                {header('status', 'signups-column-status', true, {
+                  count: notContacted,
+                  label: `${notContacted} not contacted yet`,
+                })}
                 <div className="column-header signup-actions">
                   <span className="column-name">Reach out</span>
                 </div>
