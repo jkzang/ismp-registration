@@ -76,11 +76,12 @@ describe('overviewOf', () => {
 
   it('tallies how people heard, splitting checkbox answers', () => {
     expect(o.referrals).toEqual([
-      { label: 'Flyer', count: 2 },
-      { label: 'Friend', count: 2 },
+      { label: 'Friend or mentor', count: 2 },
+      { label: 'Posters & flyers', count: 2 },
       { label: 'Instagram', count: 1 },
     ])
     expect(o.noReferral).toBe(1)
+    expect(o.otherAnswers).toEqual([])
   })
 
   it('counts the group chats among people still coming', () => {

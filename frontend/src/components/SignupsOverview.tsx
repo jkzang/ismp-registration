@@ -206,6 +206,9 @@ export function SignupsOverview({ overview, capacity, columns, onShowChatList }:
           <>
             <BarList total={overview.total} rows={overview.referrals.map((r) => ({ key: r.label, label: r.label, count: r.count }))} />
             {overview.noReferral > 0 && <p className="overview-note">{overview.noReferral} didn’t answer.</p>}
+            {overview.otherAnswers.length > 0 && (
+              <p className="overview-note">Other: {overview.otherAnswers.join(' · ')}</p>
+            )}
           </>
         ) : (
           <p className="overview-note">
