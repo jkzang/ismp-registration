@@ -35,6 +35,7 @@ function openExternal(url) {
 
 let win = null
 let auth = null
+const mac = process.platform === 'darwin'
 
 // A second launch just brings this one's window forward (see second-instance).
 if (!app.requestSingleInstanceLock()) app.exit()
@@ -88,6 +89,9 @@ function createWindow() {
     title: 'ISMP Registration',
     // The web app's frame color, so there's no white flash before the first page draws.
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#131417' : '#f0f1f5',
+    // On the Mac there's no title bar: the page runs up under the close, minimize and zoom buttons,
+    // which sit in the sidebar's top row (frontend/src/index.css: .has-window-controls).
+    ...(mac && { titleBarStyle: 'hidden', trafficLightPosition: { x: 14, y: 17 } }),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -102,6 +106,13 @@ function createWindow() {
   win.on('closed', () => (win = null))
 
   const contents = win.webContents
+  if (mac) {
+    // Tells the page whether to make room for the buttons (preload.js); they hide in full screen.
+    const tellPage = () => contents.send('window:controls', !win.isFullScreen())
+    contents.on('dom-ready', tellPage)
+    win.on('enter-full-screen', tellPage)
+    win.on('leave-full-screen', tellPage)
+  }
   // New windows (target=_blank, window.open) open in the default browser.
   contents.setWindowOpenHandler(({ url }) => {
     openExternal(url)
@@ -170,7 +181,6 @@ function registerBridge() {
 // The app
 
 function buildMenu() {
-  const mac = process.platform === 'darwin'
   return Menu.buildFromTemplate([
     ...(mac ? [{ role: 'appMenu' }] : []),
     { role: 'fileMenu' },

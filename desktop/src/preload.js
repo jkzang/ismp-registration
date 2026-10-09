@@ -5,6 +5,11 @@
  */
 const { contextBridge, ipcRenderer } = require('electron')
 
+// Mac: html.has-window-controls while the window's buttons sit over the page (main.js).
+ipcRenderer.on('window:controls', (_event, shown) => {
+  document.documentElement.classList.toggle('has-window-controls', shown)
+})
+
 contextBridge.exposeInMainWorld('ismpDesktop', {
   signIn: (domain) => ipcRenderer.invoke('google:sign-in', { domain }),
   accessToken: (interactive, domain) => ipcRenderer.invoke('google:access-token', { interactive, domain }),

@@ -518,9 +518,15 @@ input[type='radio'] {
     --sidebar-w: 208px;
   }
 
+  /* The name wraps rather than pushing the collapse button out of the narrower sidebar. */
+  .sidebar-brand {
+    min-width: 0;
+    padding: 2px 0;
+  }
+
   .brand-name {
     font-size: 15px;
-    white-space: nowrap;
+    line-height: 1.2;
   }
 }
 
@@ -603,6 +609,67 @@ input[type='radio'] {
   }
 }
 
+/* The Mac app (desktop/) has no title bar: the page runs up under the window's close, minimize and
+   zoom buttons, and html.has-window-controls (desktop/src/preload.js) makes room for them. They sit
+   in a top row of the sidebar (or of the top bar, when the sidebar is a menu), and those rows drag
+   the window the way a title bar would. In full screen the buttons hide and the class goes. */
+.has-window-controls {
+  /* The buttons' room from the window's left edge, and the row they're centered in (main.js puts
+     them there; both are in the page's px, which --ui-scale draws smaller). */
+  --window-controls-w: 84px;
+  --titlebar-h: 52px;
+}
+
+.has-window-controls .sidebar {
+  --rail-w: 88px;
+}
+
+.has-window-controls .sidebar-full {
+  padding-top: 0;
+}
+
+/* The buttons and the collapse button share the top row; the brand moves down a row. */
+.has-window-controls .sidebar-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: var(--titlebar-h) auto;
+  align-items: center;
+  margin: 0 -14px;
+  padding: 0 14px;
+}
+
+.has-window-controls .sidebar-collapse {
+  grid-row: 1;
+  grid-column: 2;
+}
+
+.has-window-controls .sidebar-brand {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.has-window-controls .sidebar-rail {
+  padding-top: var(--titlebar-h);
+}
+
+.has-window-controls .mobile-bar {
+  min-height: var(--titlebar-h);
+  padding-left: var(--window-controls-w);
+}
+
+.has-window-controls .sidebar-top,
+.has-window-controls .sidebar-rail,
+.has-window-controls .mobile-bar {
+  -webkit-app-region: drag;
+}
+
+.has-window-controls .sidebar-top :is(a, button),
+.has-window-controls .sidebar-rail :is(a, button),
+.has-window-controls .mobile-bar :is(a, button) {
+  -webkit-app-region: no-drag;
+}
+
 .page-title {
   margin-bottom: 16px;
 }
@@ -638,6 +705,17 @@ a {
     radial-gradient(900px 500px at 0% 0%, rgba(0, 196, 204, 0.22), transparent 60%),
     radial-gradient(900px 600px at 100% 100%, rgba(139, 61, 255, 0.24), transparent 60%),
     var(--frame);
+}
+
+/* The Mac app's title bar: the strip above the card drags the window. */
+.has-window-controls .auth-page::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  -webkit-app-region: drag;
 }
 
 .auth-card {
