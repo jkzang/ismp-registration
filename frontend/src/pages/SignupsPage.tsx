@@ -115,6 +115,11 @@ export function SignupsPage() {
   // Each column header's ticked values, and the column the list is sorted by.
   const [filters, setFilters] = useState<Filters>({})
   const [sort, setSort] = useState<Sort>(DEFAULT_SORT)
+  // Who was changed here, as they were before, so they keep their place in the list (and don't drop
+  // out of the filters) until the search, filters or sort change. Otherwise the row would leave from
+  // under the pointer and the next click would land on whoever moved into its place.
+  const [placedAs, setPlacedAs] = useState<Map<string, Contact>>(new Map())
+  useEffect(() => setPlacedAs(new Map()), [query, filters, sort, sheetId])
   const [editingMessages, setEditingMessages] = useState(false)
   const [templates, setTemplate] = useMessageTemplates(sheetId)
   // Who just came in from the sheet and showed under the filters then, to pop in at their place.
@@ -208,11 +213,18 @@ export function SignupsPage() {
 
   const groupChatOf = (contact: Contact) => pendingChat.get(contact.key) ?? contact.groupChat
 
+  /** Keeps them where the list has them now, the first time they're changed. */
+  function keepPlace(contact: Contact) {
+    const placed = { ...contact, status: statusOfContact(contact), groupChat: groupChatOf(contact) }
+    setPlacedAs((p) => (p.has(contact.key) ? p : new Map(p).set(contact.key, placed)))
+  }
+
   /** Shows the new status at once and writes it in the background; undoable with Ctrl/Cmd+Z once saved. */
   function changeChat(contact: Contact, status: GroupChatStatus) {
     const before = groupChatOf(contact)
     if (before === status) return
     setError(null)
+    keepPlace(contact)
     applyChat(contact.key, status).then(
       () =>
         push({
@@ -231,6 +243,7 @@ export function SignupsPage() {
     const before = statusOfContact(contact)
     if (before === status) return false
     setError(null)
+    keepPlace(contact)
     applyStatus(contact.key, status).then(
       () =>
         push({
@@ -295,9 +308,11 @@ export function SignupsPage() {
   const now = Date.now()
   const searched = current.filter(matches)
   const shown = sortRows(
-    searched.map((contact, index) => ({ contact, index })).filter((r) => passes(r.contact, filters, now)),
+    searched
+      .map((contact, index) => ({ contact: placedAs.get(contact.key) ?? contact, index, current: contact }))
+      .filter((r) => passes(r.contact, filters, now)),
     sort,
-  ).map((r) => r.contact)
+  ).map((r) => r.current)
   shownKeys.current = new Set(shown.map((c) => c.key))
   const messagesFor = (c: Contact) => templates.map((t) => fillMessage(t, c, event))
   /** A column's header, with counts among who the search and the other columns let through. */
