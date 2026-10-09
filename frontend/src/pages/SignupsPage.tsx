@@ -36,6 +36,17 @@ const planInfo = ({ mentors, excluded_mentor_ids, show_up_rates, walk_in_rate, i
   ideal_per_mentor,
 })
 
+/** Shares the list's scrollbar width with its column names, as --list-scrollbar, so they keep
+ *  clear of it. It's 0 where scrollbars float over the page, and changes with the zoom. */
+function measureScrollbar(list: HTMLUListElement | null) {
+  if (!list) return
+  const observer = new ResizeObserver(() => {
+    list.parentElement?.style.setProperty('--list-scrollbar', `${list.offsetWidth - list.clientWidth}px`)
+  })
+  observer.observe(list)
+  return () => observer.disconnect()
+}
+
 // How long someone who just came in from the sheet stays highlighted.
 const ARRIVAL_MS = 6000
 
@@ -365,7 +376,7 @@ export function SignupsPage() {
           {!read.columns.phone && !read.columns.email && (
             <p className="signups-note">No phone or email column found, so there’s no one to text or email.</p>
           )}
-          {/* The search, tools and column names stay at the top while the list scrolls. */}
+          {/* The search, tools and column names stay put while the list scrolls. */}
           <div className="signups-head">
             <div className="signups-top">
               <label className="checkin-search">
@@ -424,7 +435,7 @@ export function SignupsPage() {
               </div>
             </div>
           </div>
-          <ul className="signups-list">
+          <ul className="signups-list" ref={measureScrollbar}>
             {shown.map((c) => {
               const status = statusOfContact(c)
               const groupChat = groupChatOf(c)

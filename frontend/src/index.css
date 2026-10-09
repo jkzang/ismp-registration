@@ -2953,31 +2953,17 @@ button .spinner {
   }
 }
 
-/* The Sign-ups page scrolls as a whole. The search, tools and column names stay at the top. */
-.signups-page {
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-}
-
-.signups-page .signups {
-  flex: none;
-}
-
+/* Only the list scrolls, so its scrollbar starts below the search, tools and column names. The
+   column names keep clear of that scrollbar, measured as --list-scrollbar, to stay over their data. */
 .signups-page .signups-head {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding-top: 4px;
-  background: var(--bg);
 }
 
-.signups-page .signups-list {
-  overflow: visible;
-  /* The page scrolls, not the list, so no room is kept for a scrollbar beside the rows. */
-  padding-right: 0;
+.signups-page .signups-columns {
+  padding-right: calc(16px + var(--list-scrollbar, 0px));
 }
 
 .overview {
