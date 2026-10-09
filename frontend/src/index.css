@@ -125,7 +125,8 @@ button {
   transition: background 0.15s, box-shadow 0.15s, color 0.15s;
 }
 
-button:hover {
+/* Status pills keep their color on hover. */
+button:hover:where(:not(.status-select)) {
   background: var(--btn-hover);
 }
 
@@ -2905,29 +2906,50 @@ button .spinner {
   gap: 18px;
 }
 
-/* The group chat and contact status menus, drawn as colored pills with their own chevron, set in
-   from the edge, in place of the browser's. The pill's color comes from its status class. */
+/* The group chat and contact status menus: a colored pill that opens a menu of statuses below it.
+   The pill's color comes from its status class. */
+.status-menu-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
 .signups-list .status-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   width: 172px;
   height: 30px;
-  padding: 0 30px 0 12px;
+  padding: 0 10px 0 12px;
   border: none;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 600;
-  line-height: 30px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-opacity='0.45' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 11px center;
-  background-size: 12px;
-  appearance: none;
-  cursor: pointer;
+  text-align: left;
   transition: filter 0.12s, box-shadow 0.15s;
 }
 
-.signups-list .status-select:hover:not(:disabled) {
+.status-select-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.status-select svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  opacity: 0.6;
+  transition: transform 0.15s;
+}
+
+.status-select[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.signups-list .status-select:hover:not(:disabled),
+.signups-list .status-select[aria-expanded='true'] {
   filter: brightness(0.96);
 }
 
@@ -2936,26 +2958,61 @@ button .spinner {
   opacity: 0.7;
 }
 
-/* The open list in the page's own colors, not the pill's. */
-.signups-list .status-select option,
-.signups-list .status-select optgroup {
-  font-weight: 400;
-  color: var(--text);
-  background: var(--bg);
-}
-
-.signups-list .status-select optgroup {
-  font-weight: 700;
-}
-
 @media (prefers-color-scheme: dark) {
-  .signups-list .status-select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-opacity='0.6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  }
-
-  .signups-list .status-select:hover:not(:disabled) {
+  .signups-list .status-select:hover:not(:disabled),
+  .signups-list .status-select[aria-expanded='true'] {
     filter: brightness(1.15);
   }
+}
+
+/* The row with an open menu sits over the rows below, new ones included. */
+.signups-list li:has(.status-menu) {
+  position: relative;
+  z-index: 3;
+}
+
+.status-menu {
+  gap: 2px;
+}
+
+.status-menu-group + .status-menu-group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.status-menu-heading {
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.status-option {
+  width: 100%;
+  justify-content: space-between;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
+.status-option:focus-visible {
+  outline: none;
+  background: var(--hover-wash);
+}
+
+.status-option svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+
+.status-option .detail-chip {
+  font-size: 12.5px;
+  line-height: 20px;
+  padding: 1px 10px;
 }
 
 .signup-actions {

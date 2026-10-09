@@ -7,6 +7,7 @@ import { MessageMenu } from '../components/MessageMenu'
 import { MessagesDialog } from '../components/MessagesDialog'
 import { GENDER_LABELS, LEVEL_LABELS, SignupPersonDialog } from '../components/SignupPersonDialog'
 import { OverviewDialog } from '../components/SignupsOverview'
+import { StatusMenu, type StatusOption } from '../components/StatusMenu'
 import { StatusChangedError, writeGroupChat, writeStatus } from '../google'
 import { useSheet } from '../sheetContext'
 import { CHAT_STAGES, chatStageOf, GROUP_CHAT_STATUSES, groupChatLabel, RETURNING_LABELS, type GroupChatStatus } from '../signupColumns'
@@ -46,6 +47,15 @@ function measureScrollbar(list: HTMLUListElement | null) {
   observer.observe(list)
   return () => observer.disconnect()
 }
+
+// The group chat statuses under their stages, and the contact statuses, each in its own colors.
+const CHAT_OPTIONS: StatusOption<GroupChatStatus>[] = GROUP_CHAT_STATUSES.map((s) => ({
+  value: s.value,
+  label: s.label,
+  tone: `chat-${s.stage}`,
+  group: CHAT_STAGES.find((stage) => stage.value === s.stage)?.label,
+}))
+const STATUS_OPTIONS: StatusOption<ContactStatus>[] = CONTACT_STATUSES.map((s) => ({ ...s, tone: `status-${s.value}` }))
 
 // How long someone who just came in from the sheet stays highlighted.
 const ARRIVAL_MS = 6000
@@ -470,14 +480,16 @@ export function SignupsPage() {
                     </span>
                   </div>
                   <div className="signup-controls">
-                    <select
-                      className={`status-select chat-select chat-${groupChat ? chatStageOf(groupChat) : 'none'}${
+                    <StatusMenu
+                      className={`chat-select chat-${groupChat ? chatStageOf(groupChat) : 'none'}${
                         groupChat && chatStageOf(groupChat) !== 'complete' && status === 'confirmed' && c.wantsChat ? ' is-due' : ''
                       }`}
-                      value={groupChat ?? ''}
+                      value={groupChat}
+                      options={CHAT_OPTIONS}
+                      placeholder="Group chats…"
                       disabled={!read.columns.groupChat || pendingChat.has(c.key)}
-                      onChange={(e) => changeChat(c, e.target.value as GroupChatStatus)}
-                      aria-label={`Group chat status for ${c.name}`}
+                      onChange={(value) => changeChat(c, value)}
+                      label={`Group chat status for ${c.name}`}
                       title={
                         !read.columns.groupChat
                           ? 'The sheet’s Group Chat Status column is added the next time it’s read'
@@ -485,31 +497,15 @@ export function SignupsPage() {
                             ? `Group chats: ${groupChatLabel(groupChat)}`
                             : 'Group chats'
                       }
-                    >
-                      {!groupChat && <option value="">Group chats…</option>}
-                      {CHAT_STAGES.map((stage) => (
-                        <optgroup key={stage.value} label={stage.label}>
-                          {GROUP_CHAT_STATUSES.filter((s) => s.stage === stage.value).map((s) => (
-                            <option key={s.value} value={s.value}>
-                              {s.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                    <select
-                      className={`status-select status-${status}`}
+                    />
+                    <StatusMenu
+                      className={`status-${status}`}
                       value={status}
+                      options={STATUS_OPTIONS}
                       disabled={!read.columns.status}
-                      onChange={(e) => changeStatus(c, e.target.value as ContactStatus)}
-                      aria-label={`Contact status for ${c.name}`}
-                    >
-                      {CONTACT_STATUSES.map((s) => (
-                        <option key={s.value} value={s.value}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(value) => changeStatus(c, value)}
+                      label={`Contact status for ${c.name}`}
+                    />
                     <div className="signup-actions">
                       {phone && (
                         <MessageMenu
