@@ -2976,6 +2976,8 @@ button .spinner {
 
 .signups-page .signups-list {
   overflow: visible;
+  /* The page scrolls, not the list, so no room is kept for a scrollbar beside the rows. */
+  padding-right: 0;
 }
 
 .overview {
@@ -3338,6 +3340,11 @@ button.overview-action:hover {
 
 .signups-column-status {
   width: 172px;
+}
+
+/* As wide as the row's three buttons, so the columns before it line up. */
+.signups-columns .signup-actions {
+  min-width: 100px;
 }
 
 /* Each column is wide enough for its name, a ticked count and the sort toggle, and kept to that
