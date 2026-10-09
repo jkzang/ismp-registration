@@ -40,7 +40,10 @@
       ],
       "category": "public.app-category.productivity",
       "identity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "ISMP Registration sends the texts you confirm through Messages."
+      }
     },
     "dmg": {
       "title": "ISMP Registration"

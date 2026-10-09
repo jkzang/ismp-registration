@@ -2852,6 +2852,398 @@ button .spinner {
   font-size: 12px;
 }
 
+/* Bulk texting, in the Messages dialog (Mac app only). */
+.messages-dialog.is-wide {
+  width: min(680px, calc(100vw / var(--ui-scale) - 32px));
+}
+
+.messages-dialog .segmented {
+  align-self: flex-start;
+}
+
+.bulk-text,
+.bulk-confirm {
+  --bulk-warn: #b54708;
+  --bulk-warn-soft: #fef0c7;
+  --bulk-ok: #067647;
+}
+
+.bulk-text {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .bulk-text,
+  .bulk-confirm {
+    --bulk-warn: #fdb022;
+    --bulk-warn-soft: rgba(253, 176, 34, 0.14);
+    --bulk-ok: #47cd89;
+  }
+}
+
+.bulk-confirm {
+  width: min(520px, calc(100vw / var(--ui-scale) - 32px));
+  max-height: calc(100vh / var(--ui-scale) - 48px);
+}
+
+.bulk-confirm[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.bulk-confirm .confirm-body {
+  overflow-y: auto;
+}
+
+.bulk-setup {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.bulk-setup summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bulk-setup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.bulk-hint {
+  margin: 0;
+  font-size: 13px;
+}
+
+.bulk-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.bulk-checks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.bulk-checks li > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bulk-check {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+.bulk-check svg {
+  width: 14px;
+  height: 14px;
+}
+
+.bulk-check.is-ok {
+  color: var(--bulk-ok);
+}
+
+.bulk-check.is-todo {
+  color: var(--bulk-warn);
+}
+
+.bulk-check.is-pending {
+  border: 2px solid var(--input-border);
+  width: 16px;
+  height: 16px;
+  margin: 2px;
+}
+
+.bulk-warn {
+  color: var(--bulk-warn);
+  font-size: 14px;
+}
+
+.bulk-warn svg {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+}
+
+.bulk-setup-actions,
+.bulk-test,
+.bulk-test-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.bulk-test .message-event {
+  flex: 1 1 220px;
+}
+
+.bulk-test-ask {
+  align-items: center;
+  font-size: 14px;
+}
+
+.bulk-who {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bulk-statuses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bulk-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.6;
+}
+
+.bulk-status.is-on {
+  border-color: currentColor;
+  opacity: 1;
+}
+
+.bulk-status svg {
+  width: 13px;
+  height: 13px;
+}
+
+.bulk-count {
+  font-weight: 400;
+}
+
+.bulk-message {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bulk-preview {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 16px 16px 16px 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+
+.bulk-recipients {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bulk-recipients-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 14px;
+}
+
+.bulk-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.bulk-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.bulk-row:first-child {
+  border-top: none;
+}
+
+.bulk-row label {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.bulk-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.bulk-phone {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bulk-row label ~ .bulk-flag {
+  margin-left: 26px;
+}
+
+.bulk-flag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.bulk-flag.is-warn {
+  background: var(--bulk-warn-soft);
+  color: var(--bulk-warn);
+}
+
+.bulk-flag.is-blocked {
+  background: var(--btn);
+  color: var(--text-muted);
+}
+
+.bulk-row.is-blocked .bulk-name {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.bulk-left summary {
+  padding: 4px 0;
+  font-size: 14px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.bulk-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+}
+
+.bulk-state svg {
+  width: 14px;
+  height: 14px;
+}
+
+.bulk-row.is-sent .bulk-state {
+  color: var(--bulk-ok);
+}
+
+.bulk-row.is-sending .bulk-state {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.bulk-row.is-failed .bulk-state {
+  color: var(--error);
+}
+
+.bulk-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bulk-progress progress {
+  width: 100%;
+  accent-color: var(--accent-fill);
+}
+
+.bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  padding-top: 4px;
+  font-size: 14px;
+}
+
+.bulk-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 14px;
+  margin: 12px 0;
+  color: var(--text);
+}
+
+.bulk-summary dt {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.bulk-summary dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.bulk-confirm-names {
+  max-height: 150px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  font-size: 14px;
+}
+
+.bulk-sure {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bulk-warn-soft);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.bulk-sure input {
+  margin-top: 3px;
+}
+
 /* Text and Email ask which message to start with. */
 .message-menu-anchor {
   position: relative;
