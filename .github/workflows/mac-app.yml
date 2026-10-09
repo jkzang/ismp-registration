@@ -1,0 +1,39 @@
+# Builds the Mac app (desktop/) on a Mac and attaches the .dmg to the run: Actions → Mac app → the
+# run → Artifacts. Set the repository secret GOOGLE_DESKTOP_CLIENT_JSON to the Desktop OAuth
+# client's downloaded JSON to build sign-in in; without it the app reads the file from its own
+# folder instead (see desktop/README.md).
+name: Mac app
+
+on:
+  push:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/mac-app.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    env:
+      GOOGLE_CLIENT_JSON: ${{ secrets.GOOGLE_DESKTOP_CLIENT_JSON }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Add the Google client
+        if: env.GOOGLE_CLIENT_JSON != ''
+        run: printf '%s' "$GOOGLE_CLIENT_JSON" > google-client.json
+      - run: npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ISMP-Registration-mac
+          path: desktop/dist/*.dmg
+          if-no-files-found: error
